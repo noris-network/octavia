@@ -381,7 +381,14 @@ nova_opts = [
                 help=_('Disable certificate validation on SSL connections ')),
     cfg.BoolOpt('enable_anti_affinity', default=False,
                 help=_('Flag to indicate if nova anti-affinity feature is '
-                       'turned on.'))
+                       'turned on.')),
+    cfg.IntOpt('random_amphora_name_length', default=0,
+               help=_('If non-zero, generate a random name of the length '
+                      'provided for each amphora, in the format "a[A-Z0-9]*". '
+                      'Otherwise, the default name format will be used: '
+                      '"amphora-{UUID}".')),
+    cfg.StrOpt('availability_zone', default=None,
+               help=_('Availability zone to use for creating Amphorae')),
 ]
 
 neutron_opts = [
