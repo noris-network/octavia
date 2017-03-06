@@ -49,7 +49,7 @@ class ComputeCreate(BaseComputeTask):
     """Create the compute instance for a new amphora."""
 
     def execute(self, amphora_id, ports=None, config_drive_files=None,
-                server_group_id=None):
+                server_group_id=None, availability_zone=None):
         """Create an amphora
 
         :returns: an amphora
@@ -90,7 +90,8 @@ class ComputeCreate(BaseComputeTask):
                 port_ids=[port.id for port in ports],
                 config_drive_files=config_drive_files,
                 user_data=user_data,
-                server_group_id=server_group_id)
+                server_group_id=server_group_id,
+                availability_zone=availability_zone)
 
             LOG.debug("Server created with id: %s for amphora id: %s",
                       compute_id, amphora_id)
@@ -120,7 +121,7 @@ class ComputeCreate(BaseComputeTask):
 
 class CertComputeCreate(ComputeCreate):
     def execute(self, amphora_id, server_pem, ports=None,
-                server_group_id=None):
+                server_group_id=None, availability_zone=None):
         """Create an amphora
 
         :returns: an amphora
@@ -134,8 +135,33 @@ class CertComputeCreate(ComputeCreate):
             '/etc/octavia/certs/client_ca.pem': ca}
         return super(CertComputeCreate, self).execute(
             amphora_id, ports=ports, config_drive_files=config_drive_files,
-            server_group_id=server_group_id)
+            server_group_id=server_group_id, availability_zone=availability_zone)
 
+class CertComputeCreateMaster(CertComputeCreate):
+    def execute(self, amphora_id, server_pem, ports=None,
+                server_group_id=None):
+        """Create an amphora
+
+        :returns: an amphora
+        """
+        availability_zone = CONF.nova.master_availability_zone
+
+        return super(CertComputeCreateMaster, self).execute(
+            amphora_id, server_pem, ports=ports,
+            server_group_id=server_group_id, availability_zone=availability_zone)
+
+class CertComputeCreateBackup(CertComputeCreate):
+    def execute(self, amphora_id, server_pem, ports=None,
+                server_group_id=None):
+        """Create an amphora
+
+        :returns: an amphora
+        """
+        availability_zone = CONF.nova.backup_availability_zone
+
+        return super(CertComputeCreateBackup, self).execute(
+            amphora_id, server_pem, ports=ports,
+            server_group_id=server_group_id, availability_zone=availability_zone)
 
 class DeleteAmphoraeOnLoadBalancer(BaseComputeTask):
     """Delete the amphorae on a load balancer.

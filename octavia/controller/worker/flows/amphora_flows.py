@@ -127,12 +127,21 @@ class AmphoraFlows(object):
                     name=sf_name + '-' + constants.UPDATE_CERT_EXPIRATION,
                     requires=(constants.AMPHORA_ID, constants.SERVER_PEM)))
 
-            if role in (constants.ROLE_BACKUP, constants.ROLE_MASTER
-                        ) and anti_affinity:
+            if role in (constants.ROLE_BACKUP, constants.ROLE_MASTER) and anti_affinity:
                 create_amp_for_lb_subflow.add(compute_tasks.CertComputeCreate(
                     name=sf_name + '-' + constants.CERT_COMPUTE_CREATE,
                     requires=(constants.AMPHORA_ID, constants.SERVER_PEM,
                               constants.SERVER_GROUP_ID),
+                    provides=constants.COMPUTE_ID))
+            elif role in (constants.ROLE_MASTER):
+                create_amp_for_lb_subflow.add(compute_tasks.CertComputeCreateMaster(
+                    name=sf_name + '-' + constants.CERT_COMPUTE_CREATE,
+                    requires=(constants.AMPHORA_ID, constants.SERVER_PEM),
+                    provides=constants.COMPUTE_ID))
+            elif role in (constants.ROLE_BACKUP):
+                create_amp_for_lb_subflow.add(compute_tasks.CertComputeCreateBackup(
+                    name=sf_name + '-' + constants.CERT_COMPUTE_CREATE,
+                    requires=(constants.AMPHORA_ID, constants.SERVER_PEM),
                     provides=constants.COMPUTE_ID))
             else:
                 create_amp_for_lb_subflow.add(compute_tasks.CertComputeCreate(

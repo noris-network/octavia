@@ -381,7 +381,11 @@ nova_opts = [
                 help=_('Disable certificate validation on SSL connections ')),
     cfg.BoolOpt('enable_anti_affinity', default=False,
                 help=_('Flag to indicate if nova anti-affinity feature is '
-                       'turned on.'))
+                       'turned on.')),
+    cfg.StrOpt('master_availability_zone', default=None,
+               help=_('Availability zone to use for creating Master Amphorae')),
+    cfg.StrOpt('backup_availability_zone', default=None,
+               help=_('Availability zone to use for creating Backup Amphorae')),
 ]
 
 neutron_opts = [
