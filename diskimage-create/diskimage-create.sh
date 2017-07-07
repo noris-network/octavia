@@ -263,16 +263,25 @@ if [ "$platform" = 'NAME="Ubuntu"' ]; then
 elif [ "$platform" = 'NAME=Fedora' ]; then
     PKG_LIST="qemu kpartx git"
     for pkg in $PKG_LIST; do
-        if ! yum list installed $pkg &> /dev/null; then
+        if ! yum info installed $pkg &> /dev/null; then
             echo "Required package " $pkg " is not installed.  Exiting."
             exit 1
         fi
     done
 else
     # centos or rhel
-        PKG_LIST="qemu-kvm qemu-img kpartx git"
+        PKG_LIST="qemu-kvm qemu-img"
         for pkg in $PKG_LIST; do
-            if ! yum list installed $pkg &> /dev/null; then
+            # Actual name may be qemu-img, qemu-img-ev, qemu-img-rhev, ...
+            # "yum install qemu-img" works for all, but search requires wildcard
+            if ! yum info installed ${pkg}* &> /dev/null; then
+                echo "Required package " $pkg " is not installed.  Exiting."
+                exit 1
+            fi
+        done
+        PKG_LIST="kpartx git"
+        for pkg in $PKG_LIST; do
+            if ! yum info installed $pkg &> /dev/null; then
                 echo "Required package " $pkg " is not installed.  Exiting."
                 exit 1
             fi
@@ -280,7 +289,7 @@ else
         if [ ${platform:0:6} = "CentOS" ]; then
             # install EPEL repo, in order to install argparse
             PKG_LIST="python-argparse"
-            if ! yum list installed $pkg &> /dev/null; then
+            if ! yum info installed $pkg &> /dev/null; then
                 echo "CentOS requires the python-argparse package be "
                 echo "installed separately from the EPEL repo."
                 echo "Required package " $pkg " is not installed.  Exiting."
@@ -288,25 +297,6 @@ else
             fi
         fi
 fi
-
-# pip may not be installed from package managers
-# only check that we find an executable
-if ! which pip &> /dev/null; then
-    echo "Required executable pip not found.  Exiting."
-    exit 1
-fi
-
-# "pip freeze" does not show argparse, even if it is explicitly installed,
-# because it is part of the standard python library in 2.7.
-# See https://github.com/pypa/pip/issues/1570
-
-PKG_LIST="Babel dib-utils PyYAML"
-    for pkg in $PKG_LIST; do
-        if ! pip freeze 2>/dev/null| grep -q "^$pkg==" &>/dev/null; then
-            echo "Required python package " $pkg " is not installed.  Exiting."
-            exit 1
-        fi
-    done
 
 if  [ "$AMP_WORKING_DIR" ]; then
     mkdir -p $AMP_WORKING_DIR
