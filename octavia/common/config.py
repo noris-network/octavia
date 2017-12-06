@@ -471,6 +471,10 @@ nova_opts = [
                       '"amphora-{UUID}".')),
     cfg.StrOpt('availability_zone', default=None,
                help=_('Availability zone to use for creating Amphorae')),
+    cfg.StrOpt('master_availability_zone', default=None,
+               help=_('Availability zone to use for creating Master Amphorae')),
+    cfg.StrOpt('backup_availability_zone', default=None,
+               help=_('Availability zone to use for creating Backup Amphorae')),
 ]
 neutron_opts = [
     cfg.StrOpt('service_name',
