@@ -1,3 +1,4 @@
 # This is used for source-based builds
-amphora-agent git /opt/amphora-agent https://git.openstack.org/openstack/octavia
+# use noris git                      https://gitlab.noris.net/openstack/octavia.git
+amphora-agent git /opt/amphora-agent https://gitlab.noris.net/openstack/octavia.git
 upper-constraints file /opt/upper-constraints.txt https://git.openstack.org/cgit/openstack/requirements/plain/upper-constraints.txt
