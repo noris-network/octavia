@@ -8,7 +8,8 @@ Requires={{ amphora_netns }}.service
 # Force context as we start keepalived under "ip netns exec"
 SELinuxContext=system_u:system_r:keepalived_t:s0
 Type=forking
-KillMode=process
+KillMode=mixed
+Restart=always
 {% if vrrp_pid and check_pid %}
 ExecStart=/sbin/ip netns exec {{ amphora_nsname }} {{ keepalived_cmd }} -D -d -f {{ keepalived_cfg }} -p {{ keepalived_pid }} -r {{ vrrp_pid }} -c {{ check_pid }}
 {% else %}

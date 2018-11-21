@@ -51,3 +51,4 @@ ureadahead:
 uuid-runtime:
 vim-tiny:
 vlan:
+strace:
