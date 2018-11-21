@@ -38,7 +38,7 @@ operators should observe:
   Compute, Networking, Image and Identify. On a staging environment, upgrade
   the Load Balancing service and verify it works as expected. For example, a
   good indicator would be the successful run of `Octavia Tempest tests
-  <http://git.openstack.org/cgit/openstack/octavia-tempest-plugin>`.
+  <https://git.openstack.org/cgit/openstack/octavia-tempest-plugin>`.
 
 Cold upgrade
 ============
@@ -49,6 +49,9 @@ have to be taken down. No data plane disruption should result during the course
 of upgrading. In the case of the Load Balancing service, it means no downtime
 nor reconfiguration of service-managed resources (e.g. load balancers,
 listeners, pools and members).
+
+#. Run the :ref:`octavia-status upgrade check <octavia-status-checks>`
+   command to validate that Octavia is ready for upgrade.
 
 #. Gracefully stop all Octavia processes. We recommend in this order:
    Housekeeping, Health manager, API, Worker.
