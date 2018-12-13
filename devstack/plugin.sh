@@ -79,9 +79,13 @@ function build_octavia_worker_image {
     if [[ ${OCTAVIA_AMP_IMAGE_SIZE:+1} ]] ; then
     export PARAM_OCTAVIA_AMP_IMAGE_SIZE='-s '$OCTAVIA_AMP_IMAGE_SIZE
     fi
+
     if ! [ -f $OCTAVIA_AMP_IMAGE_FILE ]; then
         local dib_logs=/var/log/dib-build
-        sudo mkdir ${dib_logs}
+        if [[ -e ${dib_logs} ]]; then
+            sudo rm -rf ${dib_logs}
+        fi
+        sudo mkdir -m755 ${dib_logs}
         sudo chown $STACK_USER ${dib_logs}
         $OCTAVIA_DIR/diskimage-create/diskimage-create.sh -l ${dib_logs}/$(basename $OCTAVIA_AMP_IMAGE_FILE).log $octavia_dib_tracing_arg -o $OCTAVIA_AMP_IMAGE_FILE ${PARAM_OCTAVIA_AMP_BASE_OS:-} ${PARAM_OCTAVIA_AMP_DISTRIBUTION_RELEASE_ID:-} ${PARAM_OCTAVIA_AMP_IMAGE_SIZE:-}
     fi
@@ -155,8 +159,8 @@ function _start_octavia_apache_wsgi {
         enable_apache_site octavia-wsgi
     else
         enable_apache_site octavia
-        restart_apache_server
     fi
+    restart_apache_server
 }
 
 function _stop_octavia_apache_wsgi {
@@ -165,8 +169,8 @@ function _stop_octavia_apache_wsgi {
         stop_process o-api
     else
         disable_apache_site octavia
-        restart_apache_server
     fi
+    restart_apache_server
 }
 
 function create_octavia_accounts {
@@ -179,7 +183,13 @@ function create_octavia_accounts {
     local octavia_service=$(get_or_create_service "octavia" \
         $OCTAVIA_SERVICE_TYPE "Octavia Load Balancing Service")
 
-    if [[ "$WSGI_MODE" == "uwsgi" ]]; then
+    if [[ "$WSGI_MODE" == "uwsgi" ]] && [[ "$OCTAVIA_NODE" == "main" ]] ; then
+        get_or_create_endpoint $octavia_service \
+            "$REGION_NAME" \
+            "$OCTAVIA_PROTOCOL://$SERVICE_HOST:$OCTAVIA_PORT/$OCTAVIA_SERVICE_TYPE" \
+            "$OCTAVIA_PROTOCOL://$SERVICE_HOST:$OCTAVIA_PORT/$OCTAVIA_SERVICE_TYPE" \
+            "$OCTAVIA_PROTOCOL://$SERVICE_HOST:$OCTAVIA_PORT/$OCTAVIA_SERVICE_TYPE"
+    elif [[ "$WSGI_MODE" == "uwsgi" ]]; then
         get_or_create_endpoint $octavia_service \
             "$REGION_NAME" \
             "$OCTAVIA_PROTOCOL://$SERVICE_HOST/$OCTAVIA_SERVICE_TYPE" \
@@ -440,7 +450,7 @@ function configure_octavia_api_haproxy {
        DATA=(${NODE//:/ })
        NAME=$(echo -e "${DATA[0]}" | tr -d '[[:space:]]')
        IP=$(echo -e "${DATA[1]}" | tr -d '[[:space:]]')
-       echo "   server octavia-${NAME} ${IP}:${OCTAVIA_HA_PORT} weight 1" >> ${OCTAVIA_CONF_DIR}/haproxy.cfg
+       echo "   server octavia-${NAME} ${IP}:80 weight 1" >> ${OCTAVIA_CONF_DIR}/haproxy.cfg
     done
 
 }
@@ -535,8 +545,10 @@ function octavia_init {
    if [ $OCTAVIA_NODE != 'main' ] && [ $OCTAVIA_NODE != 'standalone' ]  && [ $OCTAVIA_NODE != 'api' ]; then
        # without the other services enabled apparently we don't have
        # credentials at this point
-       TOP_DIR=$(cd $(dirname "$0") && pwd)
+#       TOP_DIR=$(cd $(dirname "$0") && pwd)
        source ${TOP_DIR}/openrc admin admin
+       OCTAVIA_AMP_NETWORK_ID=$(openstack network show lb-mgmt-net -f value -c id)
+       iniset $OCTAVIA_CONF controller_worker amp_boot_network_list ${OCTAVIA_AMP_NETWORK_ID}
    fi
 
    if [ $OCTAVIA_NODE == 'main' ] || [ $OCTAVIA_NODE == 'standalone' ] ; then

@@ -194,6 +194,8 @@ if [ "$AMP_BASEOS" = "ubuntu-minimal" ]; then
     export DIB_RELEASE=${AMP_DIB_RELEASE:-"xenial"}
 elif [ "${AMP_BASEOS}" = "centos" ] || [ "${AMP_BASEOS}" = "rhel" ]; then
     export DIB_RELEASE=${AMP_DIB_RELEASE:-"7"}
+elif [ "${AMP_BASEOS}" = "fedora" ]; then
+    export DIB_RELEASE=${AMP_DIB_RELEASE:-"28"}
 fi
 
 AMP_OUTPUTFILENAME=${AMP_OUTPUTFILENAME:-"$PWD/amphora-x64-haproxy"}
@@ -208,7 +210,7 @@ AMP_PACKAGE_INSTALL=${AMP_PACKAGE_INSTALL:-0}
 
 AMP_ENABLE_FULL_MAC_SECURITY=${AMP_ENABLE_FULL_MAC_SECURITY:-0}
 
-if [ "$AMP_BASEOS" = "rhel" -o "$AMP_BASEOS" = "centos" ] && [ "$AMP_IMAGESIZE" -lt 3 ]; then
+if [ "$AMP_BASEOS" = "rhel" -o "$AMP_BASEOS" = "centos" -o "$AMP_BASEOS" = "fedora" ] && [ "$AMP_IMAGESIZE" -lt 3 ]; then
     echo "RHEL/centos based amphora requires an image size of at least 3GB"
     exit 1
 fi
