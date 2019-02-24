@@ -17,6 +17,7 @@ import operator
 from keystoneauth1 import loading as ks_loading
 from oslo_config import cfg
 
+import octavia.certificates.common.local
 import octavia.common.config
 from octavia.common import constants
 
@@ -43,6 +44,7 @@ def list_opts():
         ('neutron', octavia.common.config.neutron_opts),
         ('glance', octavia.common.config.glance_opts),
         ('quotas', octavia.common.config.quota_opts),
+        ('audit', octavia.common.config.audit_opts),
         add_auth_opts(),
     ]
 

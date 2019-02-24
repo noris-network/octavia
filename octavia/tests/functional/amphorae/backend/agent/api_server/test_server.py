@@ -11,17 +11,19 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
 import hashlib
-import json
 import os
 import random
 import socket
 import stat
 import subprocess
 
+import fixtures
 import mock
 import netifaces
 from oslo_config import fixture as oslo_fixture
+from oslo_serialization import jsonutils
 from oslo_utils import uuidutils
 import six
 
@@ -36,6 +38,7 @@ from octavia.tests.common import utils as test_utils
 import octavia.tests.unit.base as base
 
 
+AMP_AGENT_CONF_PATH = '/etc/octavia/amphora-agent.conf'
 RANDOM_ERROR = 'random error'
 OK = dict(message='OK')
 
@@ -49,6 +52,11 @@ class TestServerTestCase(base.TestCase):
         self.conf.config(group="haproxy_amphora", base_path='/var/lib/octavia')
         self.conf.config(group="controller_worker",
                          loadbalancer_topology=consts.TOPOLOGY_SINGLE)
+        self.conf.load_raw_values(project='fake_project')
+        self.conf.load_raw_values(prog='fake_prog')
+        self.useFixture(fixtures.MockPatch(
+            'oslo_config.cfg.find_config_files',
+            return_value=[AMP_AGENT_CONF_PATH]))
         with mock.patch('distro.id',
                         return_value='ubuntu'):
             self.ubuntu_test_server = server.Server()
@@ -221,7 +229,7 @@ class TestServerTestCase(base.TestCase):
             self.assertEqual(400, rv.status_code)
             self.assertEqual(
                 {'message': 'Invalid request', u'details': u'random error'},
-                json.loads(rv.data.decode('utf-8')))
+                jsonutils.loads(rv.data.decode('utf-8')))
             mode = stat.S_IRUSR | stat.S_IWUSR
             mock_open.assert_called_with(file_name, flags, mode)
             mock_fdopen.assert_called_with(123, 'w')
@@ -277,7 +285,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(
             {'message': 'Invalid Request',
              'details': 'Unknown action: error', },
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
 
         mock_exists.return_value = False
         if distro == consts.UBUNTU:
@@ -290,7 +298,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(
             {'message': 'Listener Not Found',
              'details': 'No listener with UUID: 123'},
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
         mock_exists.assert_called_with('/var/lib/octavia/123/haproxy.cfg')
 
         mock_exists.return_value = True
@@ -305,7 +313,7 @@ class TestServerTestCase(base.TestCase):
             {'message': 'OK',
              'details': 'Configuration file is valid\nhaproxy daemon for'
                         ' 123 started'},
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
         mock_subprocess.assert_called_with(
             ['/usr/sbin/service', 'haproxy-123', 'start'], stderr=-2)
 
@@ -323,7 +331,7 @@ class TestServerTestCase(base.TestCase):
             {
                 'message': 'Error starting haproxy',
                 'details': RANDOM_ERROR,
-            }, json.loads(rv.data.decode('utf-8')))
+            }, jsonutils.loads(rv.data.decode('utf-8')))
         mock_subprocess.assert_called_with(
             ['/usr/sbin/service', 'haproxy-123', 'start'], stderr=-2)
 
@@ -357,7 +365,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(
             {'message': 'OK',
              'details': 'Listener 123 reloaded'},
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
         mock_subprocess.assert_called_with(
             ['/usr/sbin/service', 'haproxy-123', 'reload'], stderr=-2)
 
@@ -375,7 +383,7 @@ class TestServerTestCase(base.TestCase):
             {'message': 'OK',
              'details': 'Configuration file is valid\nhaproxy daemon for'
                         ' 123 started'},
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
         mock_subprocess.assert_called_with(
             ['/usr/sbin/service', 'haproxy-123', 'start'], stderr=-2)
 
@@ -406,7 +414,7 @@ class TestServerTestCase(base.TestCase):
             api_version='0.5',
             haproxy_version='9.9.99-9',
             hostname='test-host'),
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
 
     @mock.patch('octavia.amphorae.backends.agent.api_server.util.'
                 'get_listener_protocol', return_value='TCP')
@@ -465,7 +473,7 @@ class TestServerTestCase(base.TestCase):
             rv = self.centos_app.delete('/' + api_server.VERSION +
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
-        self.assertEqual(OK, json.loads(rv.data.decode('utf-8')))
+        self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
         mock_exists.assert_called_with('/var/lib/octavia/123/haproxy.cfg')
 
         # service is stopped + no upstart script + no vrrp
@@ -478,7 +486,7 @@ class TestServerTestCase(base.TestCase):
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
         self.assertEqual({u'message': u'OK'},
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_rmtree.assert_called_with('/var/lib/octavia/123')
 
         if init_system == consts.INIT_SYSTEMD:
@@ -505,7 +513,7 @@ class TestServerTestCase(base.TestCase):
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
         self.assertEqual({u'message': u'OK'},
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_rmtree.assert_called_with('/var/lib/octavia/123')
 
         if init_system == consts.INIT_SYSTEMD:
@@ -532,7 +540,7 @@ class TestServerTestCase(base.TestCase):
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
         self.assertEqual({u'message': u'OK'},
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         if init_system == consts.INIT_SYSTEMD:
             mock_remove.assert_called_with(consts.SYSTEMD_DIR +
@@ -556,7 +564,7 @@ class TestServerTestCase(base.TestCase):
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
         self.assertEqual({u'message': u'OK'},
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         if init_system == consts.INIT_SYSTEMD:
             mock_remove.assert_called_with(consts.SYSTEMD_DIR +
@@ -581,7 +589,7 @@ class TestServerTestCase(base.TestCase):
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
         self.assertEqual({u'message': u'OK'},
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_pid.assert_called_once_with('123')
         mock_check_output.assert_any_call(
             ['/usr/sbin/service', 'haproxy-123', 'stop'], stderr=-2)
@@ -611,7 +619,7 @@ class TestServerTestCase(base.TestCase):
                                         '/listeners/123')
         self.assertEqual(200, rv.status_code)
         self.assertEqual({u'message': u'OK'},
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_pid.assert_called_with('123')
         mock_check_output.assert_any_call(
             ['/usr/sbin/service', 'haproxy-123', 'stop'], stderr=-2)
@@ -643,7 +651,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(500, rv.status_code)
         self.assertEqual(
             {'details': 'random error', 'message': 'Error stopping haproxy'},
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
         # that's the last call before exception
         mock_exists.assert_called_with('/proc/456')
 
@@ -708,7 +716,7 @@ class TestServerTestCase(base.TestCase):
             rv = self.centos_app.get('/' + api_server.VERSION + '/listeners')
 
         self.assertEqual(200, rv.status_code)
-        self.assertFalse(json.loads(rv.data.decode('utf-8')))
+        self.assertFalse(jsonutils.loads(rv.data.decode('utf-8')))
 
         # one listener ACTIVE
         mock_listener.side_effect = [['123']]
@@ -722,7 +730,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(200, rv.status_code)
         self.assertEqual(
             [{'status': consts.ACTIVE, 'type': 'test', 'uuid': '123'}],
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
 
         # two listener one ACTIVE, one ERROR
         mock_listener.side_effect = [['123', '456']]
@@ -737,7 +745,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(
             [{'status': consts.ACTIVE, 'type': 'test', 'uuid': '123'},
              {'status': consts.ERROR, 'type': '', 'uuid': '456'}],
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
 
     def test_ubuntu_get_listener(self):
         self._test_get_listener(consts.UBUNTU)
@@ -768,7 +776,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(
             {'message': 'Listener Not Found',
              'details': 'No listener with UUID: 123'},
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
 
         # Listener not ACTIVE
         mock_parse.side_effect = [dict(mode='test')]
@@ -784,7 +792,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(dict(
             status=consts.ERROR,
             type='',
-            uuid='123'), json.loads(rv.data.decode('utf-8')))
+            uuid='123'), jsonutils.loads(rv.data.decode('utf-8')))
 
         # Listener ACTIVE
         mock_parse.side_effect = [dict(mode='test', stats_socket='blah')]
@@ -816,7 +824,7 @@ class TestServerTestCase(base.TestCase):
                 members=[
                     {u'id-34833': u'DOWN'},
                     {u'id-34836': u'DOWN'}])]),
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
 
     def test_ubuntu_delete_cert(self):
         self._test_delete_cert(consts.UBUNTU)
@@ -836,7 +844,7 @@ class TestServerTestCase(base.TestCase):
             rv = self.centos_app.delete('/' + api_server.VERSION +
                                         '/listeners/123/certificates/test.pem')
         self.assertEqual(200, rv.status_code)
-        self.assertEqual(OK, json.loads(rv.data.decode('utf-8')))
+        self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
         mock_exists.assert_called_once_with(
             '/var/lib/octavia/certs/123/test.pem')
 
@@ -858,7 +866,7 @@ class TestServerTestCase(base.TestCase):
             rv = self.centos_app.delete('/' + api_server.VERSION +
                                         '/listeners/123/certificates/test.pem')
         self.assertEqual(200, rv.status_code)
-        self.assertEqual(OK, json.loads(rv.data.decode('utf-8')))
+        self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
         mock_remove.assert_called_once_with(
             '/var/lib/octavia/certs/123/test.pem')
 
@@ -886,7 +894,7 @@ class TestServerTestCase(base.TestCase):
         self.assertEqual(dict(
             details='No certificate with filename: test.pem',
             message='Certificate Not Found'),
-            json.loads(rv.data.decode('utf-8')))
+            jsonutils.loads(rv.data.decode('utf-8')))
         mock_exists.assert_called_with('/var/lib/octavia/certs/123/test.pem')
 
         # wrong file name
@@ -918,7 +926,7 @@ class TestServerTestCase(base.TestCase):
                                      '/listeners/123/certificates/test.pem')
         self.assertEqual(200, rv.status_code)
         self.assertEqual(dict(md5sum=hashlib.md5(six.b(CONTENT)).hexdigest()),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
     def test_ubuntu_upload_certificate_md5(self):
         self._test_upload_certificate_md5(consts.UBUNTU)
@@ -962,7 +970,7 @@ class TestServerTestCase(base.TestCase):
                                          '/listeners/123/certificates/'
                                          'test.pem', data='TestTest')
             self.assertEqual(200, rv.status_code)
-            self.assertEqual(OK, json.loads(rv.data.decode('utf-8')))
+            self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
             handle = m()
             handle.write.assert_called_once_with(six.b('TestTest'))
 
@@ -979,7 +987,7 @@ class TestServerTestCase(base.TestCase):
                                          '/listeners/123/certificates/'
                                          'test.pem', data='TestTest')
             self.assertEqual(200, rv.status_code)
-            self.assertEqual(OK, json.loads(rv.data.decode('utf-8')))
+            self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
             handle = m()
             handle.write.assert_called_once_with(six.b('TestTest'))
             mock_makedir.assert_called_once_with('/var/lib/octavia/certs/123')
@@ -1002,7 +1010,7 @@ class TestServerTestCase(base.TestCase):
                 rv = self.centos_app.put('/' + api_server.VERSION +
                                          '/certificate', data='TestTest')
             self.assertEqual(202, rv.status_code)
-            self.assertEqual(OK, json.loads(rv.data.decode('utf-8')))
+            self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
             handle = m()
             handle.write.assert_any_call(six.b('TestT'))
             handle.write.assert_any_call(six.b('est'))
@@ -1048,15 +1056,15 @@ class TestServerTestCase(base.TestCase):
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       "/plug/network",
                                       content_type='application/json',
-                                      data=json.dumps(port_info))
+                                      data=jsonutils.dumps(port_info))
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       "/plug/network",
                                       content_type='application/json',
-                                      data=json.dumps(port_info))
+                                      data=jsonutils.dumps(port_info))
         self.assertEqual(409, rv.status_code)
         self.assertEqual(dict(message="Interface already exists"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_int_exists.return_value = False
 
         # No interface at all
@@ -1070,18 +1078,18 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             mock_open.assert_called_with(file_name, os.O_WRONLY)
             mock_fdopen.assert_called_with(123, 'w')
         m().write.assert_called_once_with('1')
         self.assertEqual(404, rv.status_code)
         self.assertEqual(dict(details="No suitable network interface found"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         # No interface down
         m().reset_mock()
@@ -1094,18 +1102,18 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             mock_open.assert_called_with(file_name, os.O_WRONLY)
             mock_fdopen.assert_called_with(123, 'w')
         m().write.assert_called_once_with('1')
         self.assertEqual(404, rv.status_code)
         self.assertEqual(dict(details="No suitable network interface found"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_ifaddress.assert_called_once_with('blah')
 
         # One Interface down, Happy Path
@@ -1139,12 +1147,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             self.assertEqual(202, rv.status_code)
 
             mock_open.assert_any_call(file_name, flags, mode)
@@ -1210,12 +1218,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             self.assertEqual(202, rv.status_code)
 
             mock_open.assert_any_call(file_name, flags, mode)
@@ -1288,12 +1296,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             self.assertEqual(202, rv.status_code)
 
             mock_open.assert_any_call(file_name, flags, mode)
@@ -1350,12 +1358,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             self.assertEqual(400, rv.status_code)
 
         # same as above but ifup fails
@@ -1374,17 +1382,17 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             self.assertEqual(500, rv.status_code)
             self.assertEqual(
                 {'details': RANDOM_ERROR,
                  'message': 'Error plugging network'},
-                json.loads(rv.data.decode('utf-8')))
+                jsonutils.loads(rv.data.decode('utf-8')))
 
         # Bad port_info tests
         port_info = 'Bad data'
@@ -1392,12 +1400,12 @@ class TestServerTestCase(base.TestCase):
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       "/plug/network",
                                       content_type='application/json',
-                                      data=json.dumps(port_info))
+                                      data=jsonutils.dumps(port_info))
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       "/plug/network",
                                       content_type='application/json',
-                                      data=json.dumps(port_info))
+                                      data=jsonutils.dumps(port_info))
         self.assertEqual(400, rv.status_code)
 
         port_info = {'fixed_ips': [{'ip_address': '10.0.0.5',
@@ -1406,12 +1414,12 @@ class TestServerTestCase(base.TestCase):
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       "/plug/network",
                                       content_type='application/json',
-                                      data=json.dumps(port_info))
+                                      data=jsonutils.dumps(port_info))
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       "/plug/network",
                                       content_type='application/json',
-                                      data=json.dumps(port_info))
+                                      data=jsonutils.dumps(port_info))
         self.assertEqual(400, rv.status_code)
 
     def test_ubuntu_plug_network_host_routes(self):
@@ -1473,12 +1481,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/network",
                                           content_type='application/json',
-                                          data=json.dumps(port_info))
+                                          data=jsonutils.dumps(port_info))
             self.assertEqual(202, rv.status_code)
 
             mock_open.assert_any_call(file_name, flags, mode)
@@ -1577,12 +1585,12 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       '/plug/vip/error',
-                                      data=json.dumps(subnet_info),
+                                      data=jsonutils.dumps(subnet_info),
                                       content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       '/plug/vip/error',
-                                      data=json.dumps(subnet_info),
+                                      data=jsonutils.dumps(subnet_info),
                                       content_type='application/json')
         self.assertEqual(400, rv.status_code)
 
@@ -1602,15 +1610,15 @@ class TestServerTestCase(base.TestCase):
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       "/plug/vip/203.0.113.2",
                                       content_type='application/json',
-                                      data=json.dumps(subnet_info))
+                                      data=jsonutils.dumps(subnet_info))
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       "/plug/vip/203.0.113.2",
                                       content_type='application/json',
-                                      data=json.dumps(subnet_info))
+                                      data=jsonutils.dumps(subnet_info))
         self.assertEqual(409, rv.status_code)
         self.assertEqual(dict(message="Interface already exists"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
         mock_int_exists.return_value = False
 
         # No interface at all
@@ -1625,18 +1633,18 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             mock_open.assert_called_with(file_name, os.O_WRONLY)
             mock_fdopen.assert_called_with(123, 'w')
         m().write.assert_called_once_with('1')
         self.assertEqual(404, rv.status_code)
         self.assertEqual(dict(details="No suitable network interface found"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         # Two interfaces down
         m().reset_mock()
@@ -1650,18 +1658,18 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             mock_open.assert_called_with(file_name, os.O_WRONLY)
             mock_fdopen.assert_called_with(123, 'w')
         m().write.assert_called_once_with('1')
         self.assertEqual(404, rv.status_code)
         self.assertEqual(dict(details="No suitable network interface found"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         # Happy Path IPv4, with VRRP_IP and host route
         full_subnet_info = {
@@ -1707,12 +1715,14 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(full_subnet_info))
+                                          data=jsonutils.dumps(
+                                              full_subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(full_subnet_info))
+                                          data=jsonutils.dumps(
+                                              full_subnet_info))
             self.assertEqual(202, rv.status_code)
             mock_open.assert_any_call(file_name, flags, mode)
             mock_fdopen.assert_any_call(123, 'w')
@@ -1839,12 +1849,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             self.assertEqual(202, rv.status_code)
             mock_open.assert_any_call(file_name, flags, mode)
             mock_fdopen.assert_any_call(123, 'w')
@@ -1911,17 +1921,17 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/203.0.113.2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             self.assertEqual(500, rv.status_code)
             self.assertEqual(
                 {'details': RANDOM_ERROR,
                  'message': 'Error plugging VIP'},
-                json.loads(rv.data.decode('utf-8')))
+                jsonutils.loads(rv.data.decode('utf-8')))
 
     def test_ubuntu_plug_VIP6(self):
         self._test_plug_vip6(consts.UBUNTU)
@@ -1960,12 +1970,14 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       '/plug/vip/error',
-                                      data=json.dumps(subnet_info),
+                                      data=jsonutils.dumps(
+                                          subnet_info),
                                       content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       '/plug/vip/error',
-                                      data=json.dumps(subnet_info),
+                                      data=jsonutils.dumps(
+                                          subnet_info),
                                       content_type='application/json')
         self.assertEqual(400, rv.status_code)
 
@@ -1973,12 +1985,12 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                       '/plug/vip/error',
-                                      data=json.dumps(subnet_info),
+                                      data=jsonutils.dumps(subnet_info),
                                       content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.post('/' + api_server.VERSION +
                                       '/plug/vip/error',
-                                      data=json.dumps(subnet_info),
+                                      data=jsonutils.dumps(subnet_info),
                                       content_type='application/json')
         self.assertEqual(400, rv.status_code)
 
@@ -1993,18 +2005,18 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             mock_open.assert_called_with(file_name, os.O_WRONLY)
             mock_fdopen.assert_called_with(123, 'w')
         m().write.assert_called_once_with('1')
         self.assertEqual(404, rv.status_code)
         self.assertEqual(dict(details="No suitable network interface found"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         # Two interfaces down
         m().reset_mock()
@@ -2017,18 +2029,18 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             mock_open.assert_called_with(file_name, os.O_WRONLY)
             mock_fdopen.assert_called_with(123, 'w')
         m().write.assert_called_once_with('1')
         self.assertEqual(404, rv.status_code)
         self.assertEqual(dict(details="No suitable network interface found"),
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
 
         # Happy Path IPv6, with VRRP_IP and host route
         full_subnet_info = {
@@ -2069,12 +2081,14 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(full_subnet_info))
+                                          data=jsonutils.dumps(
+                                              full_subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(full_subnet_info))
+                                          data=jsonutils.dumps(
+                                              full_subnet_info))
             self.assertEqual(202, rv.status_code)
             mock_open.assert_any_call(file_name, flags, mode)
             mock_fdopen.assert_any_call(123, 'w')
@@ -2201,12 +2215,12 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             self.assertEqual(202, rv.status_code)
             mock_open.assert_any_call(file_name, flags, mode)
             mock_fdopen.assert_any_call(123, 'w')
@@ -2286,17 +2300,17 @@ class TestServerTestCase(base.TestCase):
                 rv = self.ubuntu_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             elif distro == consts.CENTOS:
                 rv = self.centos_app.post('/' + api_server.VERSION +
                                           "/plug/vip/2001:db8::2",
                                           content_type='application/json',
-                                          data=json.dumps(subnet_info))
+                                          data=jsonutils.dumps(subnet_info))
             self.assertEqual(500, rv.status_code)
             self.assertEqual(
                 {'details': RANDOM_ERROR,
                  'message': 'Error plugging VIP'},
-                json.loads(rv.data.decode('utf-8')))
+                jsonutils.loads(rv.data.decode('utf-8')))
 
     def test_ubuntu_get_interface(self):
         self._test_get_interface(consts.UBUNTU)
@@ -2322,12 +2336,12 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.get('/' + api_server.VERSION +
                                      '/interface/203.0.113.2',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.get('/' + api_server.VERSION +
                                      '/interface/203.0.113.2',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         self.assertEqual(200, rv.status_code)
 
@@ -2341,12 +2355,12 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.get('/' + api_server.VERSION +
                                      '/interface/::1',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.get('/' + api_server.VERSION +
                                      '/interface/::1',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         self.assertEqual(200, rv.status_code)
 
@@ -2354,12 +2368,12 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.get('/' + api_server.VERSION +
                                      '/interface/10.0.0.1',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.get('/' + api_server.VERSION +
                                      '/interface/10.0.0.1',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         self.assertEqual(404, rv.status_code)
 
@@ -2367,26 +2381,28 @@ class TestServerTestCase(base.TestCase):
         if distro == consts.UBUNTU:
             rv = self.ubuntu_app.get('/' + api_server.VERSION +
                                      '/interface/00:00:00:00:00:00',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         elif distro == consts.CENTOS:
             rv = self.centos_app.get('/' + api_server.VERSION +
                                      '/interface/00:00:00:00:00:00',
-                                     data=json.dumps(interface_res),
+                                     data=jsonutils.dumps(interface_res),
                                      content_type='application/json')
         self.assertEqual(400, rv.status_code)
 
     @mock.patch('octavia.amphorae.backends.agent.api_server.util.'
                 'get_os_init_system', return_value=consts.INIT_SYSTEMD)
     def test_ubuntu_upload_keepalived_config_systemd(self, mock_init_system):
-        self._test_upload_keepalived_config(consts.INIT_SYSTEMD,
-                                            consts.UBUNTU, mock_init_system)
+        with mock.patch('distro.id', return_value='ubuntu'):
+            self._test_upload_keepalived_config(
+                consts.INIT_SYSTEMD, consts.UBUNTU, mock_init_system)
 
     @mock.patch('octavia.amphorae.backends.agent.api_server.util.'
                 'get_os_init_system', return_value=consts.INIT_SYSTEMD)
     def test_centos_upload_keepalived_config_systemd(self, mock_init_system):
-        self._test_upload_keepalived_config(consts.INIT_SYSTEMD,
-                                            consts.CENTOS, mock_init_system)
+        with mock.patch('distro.id', return_value='centos'):
+            self._test_upload_keepalived_config(
+                consts.INIT_SYSTEMD, consts.CENTOS, mock_init_system)
 
     @mock.patch('octavia.amphorae.backends.agent.api_server.util.'
                 'get_os_init_system', return_value=consts.INIT_UPSTART)
@@ -2647,4 +2663,39 @@ class TestServerTestCase(base.TestCase):
 
         self.assertEqual(200, rv.status_code)
         self.assertEqual(expected_dict,
-                         json.loads(rv.data.decode('utf-8')))
+                         jsonutils.loads(rv.data.decode('utf-8')))
+
+    def test_ubuntu_upload_config(self):
+        self._test_upload_config(consts.UBUNTU)
+
+    def test_centos_upload_config(self):
+        self._test_upload_config(consts.CENTOS)
+
+    @mock.patch('oslo_config.cfg.CONF.mutate_config_files')
+    def _test_upload_config(self, distro, mock_mutate):
+        server.BUFFER = 5  # test the while loop
+        m = self.useFixture(
+            test_utils.OpenFixture(AMP_AGENT_CONF_PATH)).mock_open
+        with mock.patch('os.open'), mock.patch.object(os, 'fdopen', m):
+            if distro == consts.UBUNTU:
+                rv = self.ubuntu_app.put('/' + api_server.VERSION +
+                                         '/config', data='TestTest')
+            elif distro == consts.CENTOS:
+                rv = self.centos_app.put('/' + api_server.VERSION +
+                                         '/config', data='TestTest')
+            self.assertEqual(202, rv.status_code)
+            self.assertEqual(OK, jsonutils.loads(rv.data.decode('utf-8')))
+            handle = m()
+            handle.write.assert_any_call(six.b('TestT'))
+            handle.write.assert_any_call(six.b('est'))
+            mock_mutate.assert_called_once_with()
+
+            # Test the exception handling
+            mock_mutate.side_effect = Exception('boom')
+            if distro == consts.UBUNTU:
+                rv = self.ubuntu_app.put('/' + api_server.VERSION +
+                                         '/config', data='TestTest')
+            elif distro == consts.CENTOS:
+                rv = self.centos_app.put('/' + api_server.VERSION +
+                                         '/config', data='TestTest')
+            self.assertEqual(500, rv.status_code)

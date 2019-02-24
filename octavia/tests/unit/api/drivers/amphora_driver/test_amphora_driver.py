@@ -11,7 +11,6 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-
 import mock
 
 from octavia.api.drivers.amphora_driver import driver
@@ -23,7 +22,7 @@ from octavia.tests.unit.api.drivers import sample_data_models
 from octavia.tests.unit import base
 
 
-class TestAmphoraDriver(base.TestCase):
+class TestAmphoraDriver(base.TestRpc):
     def setUp(self):
         super(TestAmphoraDriver, self).setUp()
         self.amp_driver = driver.AmphoraProviderDriver()
@@ -59,7 +58,8 @@ class TestAmphoraDriver(base.TestCase):
         provider_lb = driver_dm.LoadBalancer(
             loadbalancer_id=self.sample_data.lb_id)
         self.amp_driver.loadbalancer_create(provider_lb)
-        payload = {consts.LOAD_BALANCER_ID: self.sample_data.lb_id}
+        payload = {consts.LOAD_BALANCER_ID: self.sample_data.lb_id,
+                   consts.FLAVOR: None}
         mock_cast.assert_called_with({}, 'create_load_balancer', **payload)
 
     @mock.patch('oslo_messaging.RPCClient.cast')
@@ -420,3 +420,47 @@ class TestAmphoraDriver(base.TestCase):
         payload = {consts.L7RULE_ID: self.sample_data.l7rule1_id,
                    consts.L7RULE_UPDATES: l7rule_dict}
         mock_cast.assert_called_with({}, 'update_l7rule', **payload)
+
+    # Flavor
+    def test_get_supported_flavor_metadata(self):
+        test_schema = {
+            "properties": {
+                "test_name": {"description": "Test description"},
+                "test_name2": {"description": "Another description"}}}
+        ref_dict = {"test_name": "Test description",
+                    "test_name2": "Another description"}
+
+        # mock out the supported_flavor_metadata
+        with mock.patch('octavia.api.drivers.amphora_driver.flavor_schema.'
+                        'SUPPORTED_FLAVOR_SCHEMA', test_schema):
+            result = self.amp_driver.get_supported_flavor_metadata()
+        self.assertEqual(ref_dict, result)
+
+        # Test for bad schema
+        with mock.patch('octavia.api.drivers.amphora_driver.flavor_schema.'
+                        'SUPPORTED_FLAVOR_SCHEMA', 'bogus'):
+            self.assertRaises(exceptions.DriverError,
+                              self.amp_driver.get_supported_flavor_metadata)
+
+    @mock.patch('jsonschema.validators.requests')
+    def test_validate_flavor(self, mock_validate):
+        ref_dict = {consts.LOADBALANCER_TOPOLOGY: consts.TOPOLOGY_SINGLE}
+        self.amp_driver.validate_flavor(ref_dict)
+
+        # Test bad flavor metadata value is bad
+        ref_dict = {consts.LOADBALANCER_TOPOLOGY: 'bogus'}
+        self.assertRaises(exceptions.UnsupportedOptionError,
+                          self.amp_driver.validate_flavor,
+                          ref_dict)
+
+        # Test bad flavor metadata key
+        ref_dict = {'bogus': 'bogus'}
+        self.assertRaises(exceptions.UnsupportedOptionError,
+                          self.amp_driver.validate_flavor,
+                          ref_dict)
+
+        # Test for bad schema
+        with mock.patch('octavia.api.drivers.amphora_driver.flavor_schema.'
+                        'SUPPORTED_FLAVOR_SCHEMA', 'bogus'):
+            self.assertRaises(exceptions.DriverError,
+                              self.amp_driver.validate_flavor, 'bogus')

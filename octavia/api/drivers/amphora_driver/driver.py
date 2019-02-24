@@ -12,15 +12,21 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from jsonschema import exceptions as js_exceptions
+from jsonschema import validate
 from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging as messaging
+from stevedore import driver as stevedore_driver
 
+from octavia.api.drivers.amphora_driver import flavor_schema
+from octavia.api.drivers import data_models as driver_dm
 from octavia.api.drivers import exceptions
 from octavia.api.drivers import provider_base as driver_base
 from octavia.api.drivers import utils as driver_utils
 from octavia.common import constants as consts
 from octavia.common import data_models
+from octavia.common import rpc
 from octavia.common import utils
 from octavia.db import api as db_apis
 from octavia.db import repositories
@@ -35,11 +41,10 @@ class AmphoraProviderDriver(driver_base.ProviderDriver):
     def __init__(self):
         super(AmphoraProviderDriver, self).__init__()
         topic = cfg.CONF.oslo_messaging.topic
-        self.transport = messaging.get_rpc_transport(cfg.CONF)
         self.target = messaging.Target(
             namespace=consts.RPC_NAMESPACE_CONTROLLER_AGENT,
             topic=topic, version="1.0", fanout=False)
-        self.client = messaging.RPCClient(self.transport, target=self.target)
+        self.client = rpc.get_client(self.target)
         self.repositories = repositories.Repositories()
 
     # Load Balancer
@@ -59,8 +64,13 @@ class AmphoraProviderDriver(driver_base.ProviderDriver):
                  vip.port_id, loadbalancer_id)
         return driver_utils.vip_dict_to_provider_dict(vip.to_dict())
 
+    # TODO(johnsom) convert this to octavia_lib constant flavor
+    # once octavia is transitioned to use octavia_lib
     def loadbalancer_create(self, loadbalancer):
-        payload = {consts.LOAD_BALANCER_ID: loadbalancer.loadbalancer_id}
+        if loadbalancer.flavor == driver_dm.Unset:
+            loadbalancer.flavor = None
+        payload = {consts.LOAD_BALANCER_ID: loadbalancer.loadbalancer_id,
+                   consts.FLAVOR: loadbalancer.flavor}
         self.client.cast({}, 'create_load_balancer', **payload)
 
     def loadbalancer_delete(self, loadbalancer, cascade=False):
@@ -252,3 +262,63 @@ class AmphoraProviderDriver(driver_base.ProviderDriver):
         payload = {consts.L7RULE_ID: l7rule_id,
                    consts.L7RULE_UPDATES: l7rule_dict}
         self.client.cast({}, 'update_l7rule', **payload)
+
+    # Flavor
+    def get_supported_flavor_metadata(self):
+        """Returns the valid flavor metadata keys and descriptions.
+
+        This extracts the valid flavor metadata keys and descriptions
+        from the JSON validation schema and returns it as a dictionary.
+
+        :return: Dictionary of flavor metadata keys and descriptions.
+        :raises DriverError: An unexpected error occurred.
+        """
+        try:
+            props = flavor_schema.SUPPORTED_FLAVOR_SCHEMA['properties']
+            return {k: v.get('description', '') for k, v in props.items()}
+        except Exception as e:
+            raise exceptions.DriverError(
+                user_fault_string='Failed to get the supported flavor '
+                                  'metadata due to: {}'.format(str(e)),
+                operator_fault_string='Failed to get the supported flavor '
+                                      'metadata due to: {}'.format(str(e)))
+
+    def validate_flavor(self, flavor_dict):
+        """Validates flavor profile data.
+
+        This will validate a flavor profile dataset against the flavor
+        settings the amphora driver supports.
+
+        :param flavor_dict: The flavor dictionary to validate.
+        :type flavor: dict
+        :return: None
+        :raises DriverError: An unexpected error occurred.
+        :raises UnsupportedOptionError: If the driver does not support
+          one of the flavor settings.
+        """
+        try:
+            validate(flavor_dict, flavor_schema.SUPPORTED_FLAVOR_SCHEMA)
+        except js_exceptions.ValidationError as e:
+            error_object = ''
+            if e.relative_path:
+                error_object = '{} '.format(e.relative_path[0])
+            raise exceptions.UnsupportedOptionError(
+                user_fault_string='{0}{1}'.format(error_object, e.message),
+                operator_fault_string=str(e))
+        except Exception as e:
+            raise exceptions.DriverError(
+                user_fault_string='Failed to validate the flavor metadata '
+                                  'due to: {}'.format(str(e)),
+                operator_fault_string='Failed to validate the flavor metadata '
+                                      'due to: {}'.format(str(e)))
+        compute_flavor = flavor_dict.get(consts.COMPUTE_FLAVOR, None)
+        if compute_flavor:
+            compute_driver = stevedore_driver.DriverManager(
+                namespace='octavia.compute.drivers',
+                name=CONF.controller_worker.compute_driver,
+                invoke_on_load=True
+            ).driver
+
+            # TODO(johnsom) Fix this to raise a NotFound error
+            # when the octavia-lib supports it.
+            compute_driver.validate_flavor(compute_flavor)

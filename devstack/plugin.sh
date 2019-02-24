@@ -213,8 +213,13 @@ function octavia_configure {
         cp $OCTAVIA_DIR/etc/octavia.conf $OCTAVIA_CONF
     fi
 
+    if ! [ -e $OCTAVIA_AUDIT_MAP ] ; then
+        cp $OCTAVIA_DIR/etc/audit/octavia_api_audit_map.conf.sample $OCTAVIA_AUDIT_MAP
+    fi
+
     # Use devstack logging configuration
     setup_logging $OCTAVIA_CONF
+    iniset $OCTAVIA_CONF DEFAULT debug $ENABLE_DEBUG_LOG_LEVEL
 
     # Change bind host
     iniset $OCTAVIA_CONF api_settings bind_host $SERVICE_HOST

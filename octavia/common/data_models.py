@@ -31,6 +31,10 @@ class BaseDataModel(object):
             if attr.startswith('_') or not kwargs.get(attr, True):
                 continue
             value = self.__dict__[attr]
+            if attr == 'tags':
+                # tags is a list, it doesn't need recurse
+                ret[attr] = value
+                continue
 
             if recurse:
                 if isinstance(getattr(self, attr), list):
@@ -40,7 +44,8 @@ class BaseDataModel(object):
                             if type(self) not in calling_classes:
                                 ret[attr].append(
                                     item.to_dict(calling_classes=(
-                                        calling_classes + [type(self)])))
+                                        calling_classes + [type(self)]),
+                                        recurse=recurse))
                             else:
                                 ret[attr] = None
                         else:
@@ -48,7 +53,8 @@ class BaseDataModel(object):
                 elif isinstance(getattr(self, attr), BaseDataModel):
                     if type(self) not in calling_classes:
                         ret[attr] = value.to_dict(
-                            calling_classes=calling_classes + [type(self)])
+                            calling_classes=calling_classes + [type(self)],
+                            recurse=recurse)
                     else:
                         ret[attr] = None
                 elif six.PY2 and isinstance(value, six.text_type):
@@ -225,7 +231,7 @@ class HealthMonitor(BaseDataModel):
                  rise_threshold=None, http_method=None, url_path=None,
                  expected_codes=None, enabled=None, pool=None, name=None,
                  provisioning_status=None, operating_status=None,
-                 created_at=None, updated_at=None):
+                 created_at=None, updated_at=None, tags=None):
         self.id = id
         self.project_id = project_id
         self.pool_id = pool_id
@@ -244,6 +250,7 @@ class HealthMonitor(BaseDataModel):
         self.name = name
         self.created_at = created_at
         self.updated_at = updated_at
+        self.tags = tags
 
     def delete(self):
         self.pool.health_monitor = None
@@ -255,7 +262,8 @@ class Pool(BaseDataModel):
                  operating_status=None, members=None, health_monitor=None,
                  session_persistence=None, load_balancer_id=None,
                  load_balancer=None, listeners=None, l7policies=None,
-                 created_at=None, updated_at=None, provisioning_status=None):
+                 created_at=None, updated_at=None, provisioning_status=None,
+                 tags=None):
         self.id = id
         self.project_id = project_id
         self.name = name
@@ -274,6 +282,7 @@ class Pool(BaseDataModel):
         self.created_at = created_at
         self.updated_at = updated_at
         self.provisioning_status = provisioning_status
+        self.tags = tags
 
     def update(self, update_dict):
         for key, value in update_dict.items():
@@ -319,7 +328,8 @@ class Member(BaseDataModel):
                  protocol_port=None, weight=None, backup=None, enabled=None,
                  subnet_id=None, operating_status=None, pool=None,
                  created_at=None, updated_at=None, provisioning_status=None,
-                 name=None, monitor_address=None, monitor_port=None):
+                 name=None, monitor_address=None, monitor_port=None,
+                 tags=None):
         self.id = id
         self.project_id = project_id
         self.pool_id = pool_id
@@ -337,6 +347,7 @@ class Member(BaseDataModel):
         self.name = name
         self.monitor_address = monitor_address
         self.monitor_port = monitor_port
+        self.tags = tags
 
     def delete(self):
         for mem in self.pool.members:
@@ -356,7 +367,8 @@ class Listener(BaseDataModel):
                  l7policies=None, pools=None, insert_headers=None,
                  created_at=None, updated_at=None,
                  timeout_client_data=None, timeout_member_connect=None,
-                 timeout_member_data=None, timeout_tcp_inspect=None):
+                 timeout_member_data=None, timeout_tcp_inspect=None,
+                 tags=None):
         self.id = id
         self.project_id = project_id
         self.name = name
@@ -384,6 +396,7 @@ class Listener(BaseDataModel):
         self.timeout_member_connect = timeout_member_connect
         self.timeout_member_data = timeout_member_data
         self.timeout_tcp_inspect = timeout_tcp_inspect
+        self.tags = tags
 
     def update(self, update_dict):
         for key, value in update_dict.items():
@@ -424,7 +437,8 @@ class LoadBalancer(BaseDataModel):
                  provisioning_status=None, operating_status=None, enabled=None,
                  topology=None, vip=None, listeners=None, amphorae=None,
                  pools=None, vrrp_group=None, server_group_id=None,
-                 created_at=None, updated_at=None, provider=None):
+                 created_at=None, updated_at=None, provider=None, tags=None,
+                 flavor_id=None):
 
         self.id = id
         self.project_id = project_id
@@ -443,6 +457,8 @@ class LoadBalancer(BaseDataModel):
         self.created_at = created_at
         self.updated_at = updated_at
         self.provider = provider
+        self.tags = tags or []
+        self.flavor_id = flavor_id
 
     def update(self, update_dict):
         for key, value in update_dict.items():
@@ -515,7 +531,7 @@ class Amphora(BaseDataModel):
                  load_balancer=None, role=None, cert_expiration=None,
                  cert_busy=False, vrrp_interface=None, vrrp_id=None,
                  vrrp_priority=None, cached_zone=None, created_at=None,
-                 updated_at=None, image_id=None):
+                 updated_at=None, image_id=None, compute_flavor=None):
         self.id = id
         self.load_balancer_id = load_balancer_id
         self.compute_id = compute_id
@@ -536,6 +552,7 @@ class Amphora(BaseDataModel):
         self.created_at = created_at
         self.updated_at = updated_at
         self.image_id = image_id
+        self.compute_flavor = compute_flavor
 
     def delete(self):
         for amphora in self.load_balancer.amphorae:
@@ -557,7 +574,7 @@ class L7Rule(BaseDataModel):
     def __init__(self, id=None, l7policy_id=None, type=None, enabled=None,
                  compare_type=None, key=None, value=None, l7policy=None,
                  invert=False, provisioning_status=None, operating_status=None,
-                 project_id=None, created_at=None, updated_at=None):
+                 project_id=None, created_at=None, updated_at=None, tags=None):
         self.id = id
         self.l7policy_id = l7policy_id
         self.type = type
@@ -572,6 +589,7 @@ class L7Rule(BaseDataModel):
         self.created_at = created_at
         self.updated_at = updated_at
         self.enabled = enabled
+        self.tags = tags
 
     def delete(self):
         if len(self.l7policy.l7rules) == 1:
@@ -592,7 +610,7 @@ class L7Policy(BaseDataModel):
                  position=None, listener=None, redirect_pool=None,
                  enabled=None, l7rules=None, provisioning_status=None,
                  operating_status=None, project_id=None, created_at=None,
-                 updated_at=None, redirect_prefix=None):
+                 updated_at=None, redirect_prefix=None, tags=None):
         self.id = id
         self.name = name
         self.description = description
@@ -611,6 +629,7 @@ class L7Policy(BaseDataModel):
         self.created_at = created_at
         self.updated_at = updated_at
         self.redirect_prefix = redirect_prefix
+        self.tags = tags
 
     def _conditionally_remove_pool_links(self, pool):
         """Removes links to the given pool from parent objects.
@@ -711,3 +730,25 @@ class Quotas(BaseDataModel):
         self.in_use_load_balancer = in_use_load_balancer
         self.in_use_member = in_use_member
         self.in_use_pool = in_use_pool
+
+
+class Flavor(BaseDataModel):
+
+    def __init__(self, id=None, name=None,
+                 description=None, enabled=None,
+                 flavor_profile_id=None):
+        self.id = id
+        self.name = name
+        self.description = description
+        self.enabled = enabled
+        self.flavor_profile_id = flavor_profile_id
+
+
+class FlavorProfile(BaseDataModel):
+
+    def __init__(self, id=None, name=None, provider_name=None,
+                 flavor_data=None):
+        self.id = id
+        self.name = name
+        self.provider_name = provider_name
+        self.flavor_data = flavor_data

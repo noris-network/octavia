@@ -15,6 +15,8 @@ import itertools
 
 from octavia.policies import amphora
 from octavia.policies import base
+from octavia.policies import flavor
+from octavia.policies import flavor_profile
 from octavia.policies import healthmonitor
 from octavia.policies import l7policy
 from octavia.policies import l7rule
@@ -23,12 +25,15 @@ from octavia.policies import loadbalancer
 from octavia.policies import member
 from octavia.policies import pool
 from octavia.policies import provider
+from octavia.policies import provider_flavor
 from octavia.policies import quota
 
 
 def list_rules():
     return itertools.chain(
         base.list_rules(),
+        flavor.list_rules(),
+        flavor_profile.list_rules(),
         healthmonitor.list_rules(),
         l7policy.list_rules(),
         l7rule.list_rules(),
@@ -39,4 +44,5 @@ def list_rules():
         provider.list_rules(),
         quota.list_rules(),
         amphora.list_rules(),
+        provider_flavor.list_rules(),
     )

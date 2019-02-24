@@ -138,6 +138,11 @@ while getopts "a:b:c:d:ehi:l:no:pt:r:s:vw:x" opt; do
         ;;
         o)
             AMP_OUTPUTFILENAME=$(readlink -f $OPTARG)
+	    amp_dir=$(dirname $AMP_OUTPUTFILENAME)
+            if [ ! -d $amp_dir ]; then
+                echo "Error: Directory $amp_dir does not exist"
+                exit 3
+            fi
         ;;
         p)
             AMP_PACKAGE_INSTALL=1
@@ -309,10 +314,9 @@ else
     # fedora/centos/rhel
     # Actual qemu-img name may be qemu-img, qemu-img-ev, qemu-img-rhev, ...
     # "dnf|yum install qemu-img" works for all, but search requires wildcard
-    PKG_MGR=$(which dnf &>/dev/null && echo dnf || echo yum)
     PKG_LIST="qemu-img* git"
     for pkg in $PKG_LIST; do
-        if ! $PKG_MGR info installed $pkg &> /dev/null; then
+        if ! rpm -qa $pkg ; then
             echo "Required package " ${pkg/\*} " is not installed.  Exiting."
             exit 1
         fi

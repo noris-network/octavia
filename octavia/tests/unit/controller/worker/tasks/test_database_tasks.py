@@ -51,6 +51,7 @@ VRRP_ID = random.randrange(255)
 VRRP_PRIORITY = random.randrange(100)
 CACHED_ZONE = 'zone1'
 IMAGE_ID = uuidutils.generate_uuid()
+COMPUTE_FLAVOR = uuidutils.generate_uuid()
 
 _amphora_mock = mock.MagicMock()
 _amphora_mock.id = AMP_ID
@@ -122,6 +123,7 @@ _compute_mock = mock.MagicMock()
 _compute_mock.lb_network_ip = LB_NET_IP
 _compute_mock.cached_zone = CACHED_ZONE
 _compute_mock.image_id = IMAGE_ID
+_compute_mock.compute_flavor = COMPUTE_FLAVOR
 
 
 @mock.patch('octavia.db.repositories.AmphoraRepository.delete')
@@ -481,8 +483,28 @@ class TestDatabaseTasks(base.TestCase):
                                      mock_amphora_repo_update,
                                      mock_amphora_repo_delete):
 
-        update_amp_vip_data = database_tasks.UpdateAmphoraVIPData()
+        update_amp_vip_data = database_tasks.UpdateAmphoraeVIPData()
         update_amp_vip_data.execute(_amphorae)
+
+        mock_amphora_repo_update.assert_called_once_with(
+            'TEST',
+            AMP_ID,
+            vrrp_ip=VRRP_IP,
+            ha_ip=HA_IP,
+            vrrp_port_id=VRRP_PORT_ID,
+            ha_port_id=HA_PORT_ID,
+            vrrp_id=1)
+
+    def test_update_amphora_vip_data2(self,
+                                      mock_generate_uuid,
+                                      mock_LOG,
+                                      mock_get_session,
+                                      mock_loadbalancer_repo_update,
+                                      mock_listener_repo_update,
+                                      mock_amphora_repo_update,
+                                      mock_amphora_repo_delete):
+        update_amp_vip_data2 = database_tasks.UpdateAmphoraVIPData()
+        update_amp_vip_data2.execute(_amphorae[0])
 
         mock_amphora_repo_update.assert_called_once_with(
             'TEST',
@@ -887,7 +909,8 @@ class TestDatabaseTasks(base.TestCase):
             AMP_ID,
             lb_network_ip=LB_NET_IP,
             cached_zone=CACHED_ZONE,
-            image_id=IMAGE_ID)
+            image_id=IMAGE_ID,
+            compute_flavor=COMPUTE_FLAVOR)
 
         repo.AmphoraRepository.get.assert_called_once_with(
             'TEST',

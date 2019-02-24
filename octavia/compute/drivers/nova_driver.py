@@ -24,7 +24,6 @@ from octavia.common import constants
 from octavia.common import data_models as models
 from octavia.common import exceptions
 from octavia.compute import compute_base
-from octavia.i18n import _
 
 LOG = logging.getLogger(__name__)
 
@@ -88,6 +87,7 @@ class VirtualMachineManager(compute_base.ComputeBase):
             cacert=CONF.glance.ca_certificates_file)
         self.manager = self._nova_client.servers
         self.server_groups = self._nova_client.server_groups
+        self.flavor_manager = self._nova_client.flavors
 
     def build(self, name="amphora_name", amphora_flavor=None,
               image_id=None, image_tag=None, image_owner=None,
@@ -247,7 +247,8 @@ class VirtualMachineManager(compute_base.ComputeBase):
             status=nova_response.status,
             lb_network_ip=lb_network_ip,
             cached_zone=availability_zone,
-            image_id=nova_response.image.get("id")
+            image_id=nova_response.image.get("id"),
+            compute_flavor=nova_response.flavor.get("id")
         )
         return response, fault
 
@@ -300,14 +301,15 @@ class VirtualMachineManager(compute_base.ComputeBase):
                 server=compute_id, net_id=network_id, fixed_ip=ip_address,
                 port_id=port_id)
         except Exception:
-            message = _('Error attaching network {network_id} with ip '
-                        '{ip_address} and port {port} to amphora '
-                        '(compute_id: {compute_id}) ').format(
-                            compute_id=compute_id,
-                            network_id=network_id,
-                            ip_address=ip_address,
-                            port=port_id)
-            LOG.error(message)
+            LOG.error('Error attaching network %(network_id)s with ip '
+                      '%(ip_address)s and port %(port)s to amphora '
+                      '(compute_id: %(compute_id)s) ',
+                      {
+                          'compute_id': compute_id,
+                          'network_id': network_id,
+                          'ip_address': ip_address,
+                          'port': port_id
+                      })
             raise
         return interface
 
@@ -322,7 +324,28 @@ class VirtualMachineManager(compute_base.ComputeBase):
             self.manager.interface_detach(server=compute_id,
                                           port_id=port_id)
         except Exception:
-            LOG.error('Error detaching port {port_id} from amphora '
-                      'with compute ID {compute_id}. '
-                      'Skipping.'.format(port_id=port_id,
-                                         compute_id=compute_id))
+            LOG.error('Error detaching port %(port_id)s from amphora '
+                      'with compute ID %(compute_id)s. '
+                      'Skipping.',
+                      {
+                          'port_id': port_id,
+                          'compute_id': compute_id
+                      })
+
+    def validate_flavor(self, flavor_id):
+        """Validates that a flavor exists in nova.
+
+        :param flavor_id: ID of the flavor to lookup in nova.
+        :raises: NotFound
+        :returns: None
+        """
+        try:
+            self.flavor_manager.get(flavor_id)
+        except nova_exceptions.NotFound:
+            LOG.info('Flavor %s was not found in nova.', flavor_id)
+            raise exceptions.InvalidSubresource(resource='Nova flavor',
+                                                id=flavor_id)
+        except Exception as e:
+            LOG.exception('Nova reports a failure getting flavor details for '
+                          'flavor ID %s: %s', flavor_id, e)
+            raise

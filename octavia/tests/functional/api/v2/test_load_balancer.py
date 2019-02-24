@@ -19,6 +19,7 @@ import mock
 from oslo_config import cfg
 from oslo_config import fixture as oslo_fixture
 from oslo_utils import uuidutils
+from sqlalchemy.orm import exc as sa_exception
 
 from octavia.api.drivers import exceptions as provider_exceptions
 from octavia.common import constants
@@ -65,7 +66,8 @@ class TestLoadBalancer(base.BaseAPITest):
     def test_create(self, **optionals):
         lb_json = {'name': 'test1',
                    'vip_subnet_id': uuidutils.generate_uuid(),
-                   'project_id': self.project_id
+                   'project_id': self.project_id,
+                   'tags': ['test_tag1', 'test_tag2']
                    }
         lb_json.update(optionals)
         body = self._build_body(lb_json)
@@ -289,6 +291,40 @@ class TestLoadBalancer(base.BaseAPITest):
         subnet1 = network_models.Subnet(id=uuidutils.generate_uuid(),
                                         network_id=network_id,
                                         cidr='2001:DB8::/32',
+                                        ip_version=6)
+        subnet2 = network_models.Subnet(id=uuidutils.generate_uuid(),
+                                        network_id=network_id,
+                                        cidr='198.51.100.0/24',
+                                        ip_version=4)
+        network = network_models.Network(id=network_id,
+                                         subnets=[subnet1.id, subnet2.id])
+        lb_json = {'vip_network_id': network.id,
+                   'vip_address': ip_address,
+                   'project_id': self.project_id}
+        body = self._build_body(lb_json)
+        with mock.patch(
+                "octavia.network.drivers.noop_driver.driver.NoopManager"
+                ".get_network") as mock_get_network, mock.patch(
+            "octavia.network.drivers.noop_driver.driver.NoopManager"
+                ".get_subnet") as mock_get_subnet:
+            mock_get_network.return_value = network
+            mock_get_subnet.side_effect = [subnet1, subnet2]
+            response = self.post(self.LBS_PATH, body)
+        api_lb = response.json.get(self.root_tag)
+        self._assert_request_matches_response(lb_json, api_lb)
+        self.assertEqual(subnet1.id, api_lb.get('vip_subnet_id'))
+        self.assertEqual(network.id, api_lb.get('vip_network_id'))
+        self.assertEqual(ip_address, api_lb.get('vip_address'))
+
+    # Note: This test is using the unique local address range to
+    #       validate that we handle a fully expaned IP address properly.
+    #       This is not possible with the documentation/testnet range.
+    def test_create_with_vip_network_and_address_full_ipv6(self):
+        ip_address = 'fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'
+        network_id = uuidutils.generate_uuid()
+        subnet1 = network_models.Subnet(id=uuidutils.generate_uuid(),
+                                        network_id=network_id,
+                                        cidr='fc00::/7',
                                         ip_version=6)
         subnet2 = network_models.Subnet(id=uuidutils.generate_uuid(),
                                         network_id=network_id,
@@ -833,7 +869,7 @@ class TestLoadBalancer(base.BaseAPITest):
         self.assertIn("Provider 'BOGUS' is not enabled.",
                       response.json.get('faultstring'))
 
-    def test_create_flavor_bogus(self, **optionals):
+    def test_create_flavor_bad_type(self, **optionals):
         lb_json = {'name': 'test1',
                    'vip_subnet_id': uuidutils.generate_uuid(),
                    'project_id': self.project_id,
@@ -843,27 +879,137 @@ class TestLoadBalancer(base.BaseAPITest):
         body = self._build_body(lb_json)
         response = self.post(self.LBS_PATH, body, status=400)
         self.assertIn("Invalid input for field/attribute flavor_id. Value: "
-                      "'BOGUS'. Value should be one of:",
+                      "'BOGUS'. Value should be UUID format",
+                      response.json.get('faultstring'))
+
+    def test_create_flavor_invalid(self, **optionals):
+        lb_json = {'name': 'test1',
+                   'vip_subnet_id': uuidutils.generate_uuid(),
+                   'project_id': self.project_id,
+                   'flavor_id': uuidutils.generate_uuid()
+                   }
+        lb_json.update(optionals)
+        body = self._build_body(lb_json)
+        response = self.post(self.LBS_PATH, body, status=400)
+        self.assertIn("Validation failure: Invalid flavor_id.",
+                      response.json.get('faultstring'))
+
+    def test_create_flavor_disabled(self, **optionals):
+        fp = self.create_flavor_profile('test1', 'noop_driver',
+                                        '{"image": "ubuntu"}')
+        flavor = self.create_flavor('name1', 'description',
+                                    fp.get('id'), False)
+        test_flavor_id = flavor.get('id')
+        lb_json = {'name': 'test1',
+                   'vip_subnet_id': uuidutils.generate_uuid(),
+                   'project_id': self.project_id,
+                   'flavor_id': test_flavor_id,
+                   }
+        lb_json.update(optionals)
+        body = self._build_body(lb_json)
+        response = self.post(self.LBS_PATH, body, status=400)
+        ref_faultstring = ('The selected flavor is not allowed in this '
+                           'deployment: {}'.format(test_flavor_id))
+        self.assertEqual(ref_faultstring, response.json.get('faultstring'))
+
+    def test_create_flavor_missing(self, **optionals):
+        fp = self.create_flavor_profile('test1', 'noop_driver',
+                                        '{"image": "ubuntu"}')
+        flavor = self.create_flavor('name1', 'description', fp.get('id'), True)
+        test_flavor_id = flavor.get('id')
+        lb_json = {'name': 'test1',
+                   'vip_subnet_id': uuidutils.generate_uuid(),
+                   'project_id': self.project_id,
+                   'flavor_id': test_flavor_id
+                   }
+        lb_json.update(optionals)
+        body = self._build_body(lb_json)
+        with mock.patch('octavia.db.repositories.FlavorRepository.'
+                        'get_flavor_metadata_dict',
+                        side_effect=sa_exception.NoResultFound):
+            response = self.post(self.LBS_PATH, body, status=400)
+        self.assertIn("Validation failure: Invalid flavor_id.",
+                      response.json.get('faultstring'))
+
+    def test_create_flavor_no_provider(self, **optionals):
+        fp = self.create_flavor_profile('test1', 'noop_driver',
+                                        '{"image": "ubuntu"}')
+        flavor = self.create_flavor('name1', 'description', fp.get('id'), True)
+        test_flavor_id = flavor.get('id')
+        lb_json = {'name': 'test1',
+                   'vip_subnet_id': uuidutils.generate_uuid(),
+                   'project_id': self.project_id,
+                   'flavor_id': test_flavor_id,
+                   }
+        lb_json.update(optionals)
+        body = self._build_body(lb_json)
+        response = self.post(self.LBS_PATH, body, status=201)
+        api_lb = response.json.get(self.root_tag)
+        self.assertEqual('noop_driver', api_lb.get('provider'))
+        self.assertEqual(test_flavor_id, api_lb.get('flavor_id'))
+
+    def test_matching_providers(self, **optionals):
+        fp = self.create_flavor_profile('test1', 'noop_driver',
+                                        '{"image": "ubuntu"}')
+        flavor = self.create_flavor('name1', 'description', fp.get('id'), True)
+        test_flavor_id = flavor.get('id')
+        lb_json = {'name': 'test1',
+                   'vip_subnet_id': uuidutils.generate_uuid(),
+                   'project_id': self.project_id,
+                   'flavor_id': test_flavor_id,
+                   'provider': 'noop_driver'
+                   }
+        lb_json.update(optionals)
+        body = self._build_body(lb_json)
+        response = self.post(self.LBS_PATH, body, status=201)
+        api_lb = response.json.get(self.root_tag)
+        self.assertEqual('noop_driver', api_lb.get('provider'))
+        self.assertEqual(test_flavor_id, api_lb.get('flavor_id'))
+
+    def test_conflicting_providers(self, **optionals):
+        fp = self.create_flavor_profile('test1', 'noop_driver',
+                                        '{"image": "ubuntu"}')
+        flavor = self.create_flavor('name1', 'description', fp.get('id'), True)
+        test_flavor_id = flavor.get('id')
+        lb_json = {'name': 'test1',
+                   'vip_subnet_id': uuidutils.generate_uuid(),
+                   'project_id': self.project_id,
+                   'flavor_id': test_flavor_id,
+                   'provider': 'noop_driver-alt'
+                   }
+        lb_json.update(optionals)
+        body = self._build_body(lb_json)
+        response = self.post(self.LBS_PATH, body, status=400)
+        self.assertIn("Flavor '{}' is not compatible with provider "
+                      "'noop_driver-alt'".format(test_flavor_id),
                       response.json.get('faultstring'))
 
     def test_get_all_admin(self):
         project_id = uuidutils.generate_uuid()
         lb1 = self.create_load_balancer(uuidutils.generate_uuid(),
-                                        name='lb1', project_id=self.project_id)
+                                        name='lb1', project_id=self.project_id,
+                                        tags=['test_tag1'])
         lb2 = self.create_load_balancer(uuidutils.generate_uuid(),
-                                        name='lb2', project_id=project_id)
+                                        name='lb2', project_id=project_id,
+                                        tags=['test_tag2'])
         lb3 = self.create_load_balancer(uuidutils.generate_uuid(),
-                                        name='lb3', project_id=project_id)
+                                        name='lb3', project_id=project_id,
+                                        tags=['test_tag3'])
         response = self.get(self.LBS_PATH)
         lbs = response.json.get(self.root_tag_list)
         self.assertEqual(3, len(lbs))
-        lb_id_names = [(lb.get('id'), lb.get('name')) for lb in lbs]
+        lb_id_names = [(lb.get('id'),
+                        lb.get('name'),
+                        lb.get('tags')) for lb in lbs]
         lb1 = lb1.get(self.root_tag)
         lb2 = lb2.get(self.root_tag)
         lb3 = lb3.get(self.root_tag)
-        self.assertIn((lb1.get('id'), lb1.get('name')), lb_id_names)
-        self.assertIn((lb2.get('id'), lb2.get('name')), lb_id_names)
-        self.assertIn((lb3.get('id'), lb3.get('name')), lb_id_names)
+        self.assertIn((lb1.get('id'), lb1.get('name'), lb1.get('tags')),
+                      lb_id_names)
+        self.assertIn((lb2.get('id'), lb2.get('name'), lb2.get('tags')),
+                      lb_id_names)
+        self.assertIn((lb3.get('id'), lb3.get('name'), lb3.get('tags')),
+                      lb_id_names)
 
     def test_get_all_non_admin(self):
         project_id = uuidutils.generate_uuid()
@@ -1125,6 +1271,97 @@ class TestLoadBalancer(base.BaseAPITest):
         self.assertEqual(lb1['id'],
                          lbs['loadbalancers'][0]['id'])
 
+    def test_get_all_tags_filter(self):
+        lb1 = self.create_load_balancer(
+            uuidutils.generate_uuid(),
+            name='lb1',
+            project_id=self.project_id,
+            vip_address='10.0.0.1',
+            tags=['test_tag1', 'test_tag2']
+        ).get(self.root_tag)
+        lb2 = self.create_load_balancer(
+            uuidutils.generate_uuid(),
+            name='lb2',
+            project_id=self.project_id,
+            tags=['test_tag2', 'test_tag3']
+        ).get(self.root_tag)
+        lb3 = self.create_load_balancer(
+            uuidutils.generate_uuid(),
+            name='lb3',
+            project_id=self.project_id,
+            tags=['test_tag4', 'test_tag5']
+        ).get(self.root_tag)
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(2, len(lbs))
+        self.assertEqual(
+            [lb1.get('id'), lb2.get('id')],
+            [lb.get('id') for lb in lbs]
+        )
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'tags': ['test_tag2', 'test_tag3']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(1, len(lbs))
+        self.assertEqual(
+            [lb2.get('id')],
+            [lb.get('id') for lb in lbs]
+        )
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'tags-any': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(2, len(lbs))
+        self.assertEqual(
+            [lb1.get('id'), lb2.get('id')],
+            [lb.get('id') for lb in lbs]
+        )
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'not-tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(1, len(lbs))
+        self.assertEqual(
+            [lb3.get('id')],
+            [lb.get('id') for lb in lbs]
+        )
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'not-tags-any': ['test_tag2', 'test_tag4']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(0, len(lbs))
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'tags': 'test_tag2',
+                    'tags-any': ['test_tag1', 'test_tag3']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(2, len(lbs))
+        self.assertEqual(
+            [lb1.get('id'), lb2.get('id')],
+            [lb.get('id') for lb in lbs]
+        )
+
+        lbs = self.get(
+            self.LBS_PATH,
+            params={'tags': 'test_tag2', 'not-tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(lbs, list)
+        self.assertEqual(0, len(lbs))
+
     def test_get_all_hides_deleted(self):
         api_lb = self.create_load_balancer(
             uuidutils.generate_uuid()).get(self.root_tag)
@@ -1160,7 +1397,8 @@ class TestLoadBalancer(base.BaseAPITest):
                                            name='lb1',
                                            project_id=project_id,
                                            description='desc1',
-                                           admin_state_up=False)
+                                           admin_state_up=False,
+                                           tags=['test_tag'])
         lb_dict = lb.get(self.root_tag)
         response = self.get(
             self.LB_PATH.format(
@@ -1173,6 +1411,7 @@ class TestLoadBalancer(base.BaseAPITest):
         self.assertEqual(subnet.id, response.get('vip_subnet_id'))
         self.assertEqual(network.id, response.get('vip_network_id'))
         self.assertEqual(port.id, response.get('vip_port_id'))
+        self.assertEqual(['test_tag'], response.get('tags'))
 
     def test_get_deleted_gives_404(self):
         api_lb = self.create_load_balancer(
@@ -1293,15 +1532,17 @@ class TestLoadBalancer(base.BaseAPITest):
                                        name='lb1',
                                        project_id=project_id,
                                        description='desc1',
-                                       admin_state_up=False)
+                                       admin_state_up=False,
+                                       tags=['test_tag1'])
         lb_dict = lb.get(self.root_tag)
-        lb_json = self._build_body({'name': 'lb2'})
+        lb_json = self._build_body({'name': 'lb2', 'tags': ['test_tag2']})
         lb = self.set_lb_status(lb_dict.get('id'))
         response = self.put(self.LB_PATH.format(lb_id=lb_dict.get('id')),
                             lb_json)
         api_lb = response.json.get(self.root_tag)
         self.assertIsNotNone(api_lb.get('vip_subnet_id'))
         self.assertEqual('lb2', api_lb.get('name'))
+        self.assertEqual(['test_tag2'], api_lb.get('tags'))
         self.assertEqual(project_id, api_lb.get('project_id'))
         self.assertEqual('desc1', api_lb.get('description'))
         self.assertFalse(api_lb.get('admin_state_up'))
@@ -2099,8 +2340,9 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             # expected that this would be overwritten anyway, so 'ANY' is fine?
             'vip_network_id': mock.ANY,
             'vip_qos_policy_id': None,
-            'flavor_id': '',
-            'provider': 'noop_driver'
+            'flavor_id': None,
+            'provider': 'noop_driver',
+            'tags': []
         }
         expected_lb.update(create_lb)
         expected_lb['listeners'] = expected_listeners
@@ -2133,6 +2375,7 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             'timeout_member_connect': constants.DEFAULT_TIMEOUT_MEMBER_CONNECT,
             'timeout_member_data': constants.DEFAULT_TIMEOUT_MEMBER_DATA,
             'timeout_tcp_inspect': constants.DEFAULT_TIMEOUT_TCP_INSPECT,
+            'tags': []
         }
         if create_sni_containers:
             create_listener['sni_container_refs'] = create_sni_containers
@@ -2180,7 +2423,8 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             'enabled': True,
             'provisioning_status': constants.PENDING_CREATE,
             'operating_status': constants.OFFLINE,
-            'project_id': self._project_id
+            'project_id': self._project_id,
+            'tags': []
         }
         expected_pool.update(create_pool)
         if expected_members:
@@ -2199,7 +2443,8 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             'enabled': True,
             'subnet_id': None,
             'operating_status': constants.OFFLINE,
-            'project_id': self._project_id
+            'project_id': self._project_id,
+            'tags': []
         }
         expected_member.update(create_member)
         return create_member, expected_member
@@ -2219,7 +2464,8 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             'admin_state_up': True,
             'project_id': self._project_id,
             'provisioning_status': constants.PENDING_CREATE,
-            'operating_status': constants.OFFLINE
+            'operating_status': constants.OFFLINE,
+            'tags': []
         }
         expected_hm.update(create_hm)
         return create_hm, expected_hm
@@ -2260,7 +2506,8 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             'rules': [],
             'project_id': self._project_id,
             'provisioning_status': constants.PENDING_CREATE,
-            'operating_status': constants.OFFLINE
+            'operating_status': constants.OFFLINE,
+            'tags': []
         }
         expected_l7policy.update(create_l7policy)
         expected_l7policy.pop('redirect_pool', None)
@@ -2286,7 +2533,8 @@ class TestLoadBalancerGraph(base.BaseAPITest):
             'key': None,
             'project_id': self._project_id,
             'provisioning_status': constants.PENDING_CREATE,
-            'operating_status': constants.OFFLINE
+            'operating_status': constants.OFFLINE,
+            'tags': []
         }]
         expected_l7rules[0].update(create_l7rules[0])
         return create_l7rules, expected_l7rules
@@ -2450,6 +2698,27 @@ class TestLoadBalancerGraph(base.BaseAPITest):
         create_listener, expected_listener = self._get_listener_bodies(
             create_l7policies=create_l7policies,
             expected_l7policies=expected_l7policies)
+        create_lb, expected_lb = self._get_lb_bodies(
+            create_listeners=[create_listener],
+            expected_listeners=[expected_listener],
+            create_pools=[create_pool])
+        body = self._build_body(create_lb)
+        response = self.post(self.LBS_PATH, body)
+        api_lb = response.json.get(self.root_tag)
+        self._assert_graphs_equal(expected_lb, api_lb)
+
+    def test_with_l7policies_one_redirect_url_with_default_pool(self):
+        create_pool, expected_pool = self._get_pool_bodies(create_members=[],
+                                                           expected_members=[])
+        create_l7rules, expected_l7rules = self._get_l7rules_bodies()
+        create_l7policies, expected_l7policies = self._get_l7policies_bodies(
+            create_l7rules=create_l7rules,
+            expected_l7rules=expected_l7rules)
+        create_listener, expected_listener = self._get_listener_bodies(
+            create_default_pool_name=create_pool['name'],
+            create_l7policies=create_l7policies,
+            expected_l7policies=expected_l7policies,
+        )
         create_lb, expected_lb = self._get_lb_bodies(
             create_listeners=[create_listener],
             expected_listeners=[expected_listener],

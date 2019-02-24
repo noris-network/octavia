@@ -239,7 +239,7 @@ AMPHORAE_NETWORK_CONFIG = 'amphorae_network_config'
 ADDED_PORTS = 'added_ports'
 PORTS = 'ports'
 MEMBER_PORTS = 'member_ports'
-LOADBALANCER_TOPOLOGY = 'topology'
+TOPOLOGY = 'topology'
 HEALTHMONITORS = 'healthmonitors'
 HEALTH_MONITOR_ID = 'health_monitor_id'
 L7POLICIES = 'l7policies'
@@ -258,6 +258,13 @@ REQ_CONN_TIMEOUT = 'req_conn_timeout'
 REQ_READ_TIMEOUT = 'req_read_timeout'
 CONN_MAX_RETRIES = 'conn_max_retries'
 CONN_RETRY_INTERVAL = 'conn_retry_interval'
+SUBNET = 'subnet'
+AMP_DATA = 'amp_data'
+ACTIVE_CONNECTIONS = 'active_connections'
+BYTES_IN = 'bytes_in'
+BYTES_OUT = 'bytes_out'
+REQUEST_ERRORS = 'request_errors'
+TOTAL_CONNECTIONS = 'total_connections'
 
 CERT_ROTATE_AMPHORA_FLOW = 'octavia-cert-rotate-amphora-flow'
 CREATE_AMPHORA_FLOW = 'octavia-create-amphora-flow'
@@ -292,9 +299,11 @@ UPDATE_POOL_FLOW = 'octavia-update-pool-flow'
 UPDATE_L7POLICY_FLOW = 'octavia-update-l7policy-flow'
 UPDATE_L7RULE_FLOW = 'octavia-update-l7rule-flow'
 UPDATE_AMPS_SUBFLOW = 'octavia-update-amps-subflow'
+UPDATE_AMPHORA_CONFIG_FLOW = 'octavia-update-amp-config-flow'
 
 POST_MAP_AMP_TO_LB_SUBFLOW = 'octavia-post-map-amp-to-lb-subflow'
 CREATE_AMP_FOR_LB_SUBFLOW = 'octavia-create-amp-for-lb-subflow'
+AMP_PLUG_NET_SUBFLOW = 'octavia-plug-net-subflow'
 GET_AMPHORA_FOR_LB_SUBFLOW = 'octavia-get-amphora-for-lb-subflow'
 POST_LB_AMP_ASSOCIATION_SUBFLOW = (
     'octavia-post-loadbalancer-amp_association-subflow')
@@ -327,8 +336,13 @@ CREATE_VRRP_GROUP_FOR_LB = 'octavia-create-vrrp-group-for-lb'
 CREATE_VRRP_SECURITY_RULES = 'octavia-create-vrrp-security-rules'
 AMP_COMPUTE_CONNECTIVITY_WAIT = 'octavia-amp-compute-connectivity-wait'
 AMP_LISTENER_UPDATE = 'octavia-amp-listeners-update'
-
+PLUG_VIP_AMPHORA = 'octavia-amp-plug-vip'
+APPLY_QOS_AMP = 'octavia-amp-apply-qos'
+UPDATE_AMPHORA_VIP_DATA = 'ocatvia-amp-update-vip-data'
+GET_AMP_NETWORK_CONFIG = 'octavia-amp-get-network-config'
+AMP_POST_VIP_PLUG = 'octavia-amp-post-vip-plug'
 GENERATE_SERVER_PEM_TASK = 'GenerateServerPEMTask'
+AMPHORA_CONFIG_UPDATE_TASK = 'AmphoraConfigUpdateTask'
 
 # Batch Member Update constants
 UNORDERED_MEMBER_UPDATES_FLOW = 'octavia-unordered-member-updates-flow'
@@ -346,6 +360,7 @@ DELETE_MEMBER_INDB = 'octavia-delete-member-indb'
 RELOAD_LB_AFTER_AMP_ASSOC = 'reload-lb-after-amp-assoc'
 RELOAD_LB_AFTER_AMP_ASSOC_FULL_GRAPH = 'reload-lb-after-amp-assoc-full-graph'
 RELOAD_LB_AFTER_PLUG_VIP = 'reload-lb-after-plug-vip'
+RELOAD_LB_BEFOR_ALLOCATE_VIP = "reload-lb-before-allocate-vip"
 
 NOVA_1 = '1.1'
 NOVA_21 = '2.1'
@@ -529,8 +544,12 @@ RBAC_L7RULE = '{}:l7rule:'.format(LOADBALANCER_API)
 RBAC_QUOTA = '{}:quota:'.format(LOADBALANCER_API)
 RBAC_AMPHORA = '{}:amphora:'.format(LOADBALANCER_API)
 RBAC_PROVIDER = '{}:provider:'.format(LOADBALANCER_API)
+RBAC_PROVIDER_FLAVOR = '{}:provider-flavor:'.format(LOADBALANCER_API)
+RBAC_FLAVOR = '{}:flavor:'.format(LOADBALANCER_API)
+RBAC_FLAVOR_PROFILE = '{}:flavor-profile:'.format(LOADBALANCER_API)
 RBAC_POST = 'post'
 RBAC_PUT = 'put'
+RBAC_PUT_CONFIG = 'put_config'
 RBAC_PUT_FAILOVER = 'put_failover'
 RBAC_DELETE = 'delete'
 RBAC_GET_ONE = 'get_one'
@@ -541,12 +560,7 @@ RBAC_GET_STATS = 'get_stats'
 RBAC_GET_STATUS = 'get_status'
 
 # PROVIDERS
-# TODO(johnsom) When providers are implemented, this should be removed.
 OCTAVIA = 'octavia'
-
-# FLAVORS
-# TODO(johnsom) When flavors are implemented, this should be removed.
-SUPPORTED_FLAVORS = ()
 
 # systemctl commands
 DISABLE = 'disable'
@@ -557,3 +571,12 @@ AMP_NETNS_SVC_PREFIX = 'amphora-netns'
 
 # Amphora Feature Compatibility
 HTTP_REUSE = 'has_http_reuse'
+
+# TODO(johnsom) convert this to octavia_lib constant flavor
+# once octavia is transitioned to use octavia_lib
+FLAVOR = 'flavor'
+FLAVOR_DATA = 'flavor_data'
+
+# Flavor metadata
+LOADBALANCER_TOPOLOGY = 'loadbalancer_topology'
+COMPUTE_FLAVOR = 'compute_flavor'

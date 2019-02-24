@@ -27,6 +27,7 @@ from taskflow.types import failure
 from octavia.common import constants
 from octavia.common import data_models
 import octavia.common.tls_utils.cert_parser as cert_parser
+from octavia.common import validate
 from octavia.controller.worker import task_utils as task_utilities
 from octavia.db import api as db_apis
 from octavia.db import repositories as repo
@@ -408,7 +409,7 @@ class UpdateVIPAfterAllocation(BaseDatabaseTask):
                                             id=loadbalancer_id)
 
 
-class UpdateAmphoraVIPData(BaseDatabaseTask):
+class UpdateAmphoraeVIPData(BaseDatabaseTask):
     """Update amphorae VIP data."""
 
     def execute(self, amps_data):
@@ -424,6 +425,23 @@ class UpdateAmphoraVIPData(BaseDatabaseTask):
                                       vrrp_port_id=amp_data.vrrp_port_id,
                                       ha_port_id=amp_data.ha_port_id,
                                       vrrp_id=1)
+
+
+class UpdateAmphoraVIPData(BaseDatabaseTask):
+    """Update amphorae VIP data."""
+
+    def execute(self, amp_data):
+        """Update amphorae VIP data.
+
+        :param amps_data: Amphorae update dicts.
+        :returns: None
+        """
+        self.repos.amphora.update(db_apis.get_session(), amp_data.id,
+                                  vrrp_ip=amp_data.vrrp_ip,
+                                  ha_ip=amp_data.ha_ip,
+                                  vrrp_port_id=amp_data.vrrp_port_id,
+                                  ha_port_id=amp_data.ha_port_id,
+                                  vrrp_id=1)
 
 
 class UpdateAmpFailoverDetails(BaseDatabaseTask):
@@ -479,7 +497,7 @@ class AssociateFailoverAmphoraWithLBID(BaseDatabaseTask):
 class MapLoadbalancerToAmphora(BaseDatabaseTask):
     """Maps and assigns a load balancer to an amphora in the database."""
 
-    def execute(self, loadbalancer_id, server_group_id=None):
+    def execute(self, loadbalancer_id, server_group_id=None, flavor=None):
         """Allocates an Amphora for the load balancer in the database.
 
         :param loadbalancer_id: The load balancer id to map to an amphora
@@ -493,6 +511,13 @@ class MapLoadbalancerToAmphora(BaseDatabaseTask):
         if server_group_id is not None:
             LOG.debug("Load balancer is using anti-affinity. Skipping spares "
                       "pool allocation.")
+            return None
+
+        # Validate the flavor is spares compatible
+        if not validate.is_flavor_spares_compatible(flavor):
+            LOG.debug("Load balancer has a flavor that is not compatible with "
+                      "using spares pool amphora. Skipping spares pool "
+                      "allocation.")
             return None
 
         amp = self.amphora_repo.allocate_and_associate(
@@ -876,7 +901,8 @@ class UpdateAmphoraInfo(BaseDatabaseTask):
             db_apis.get_session(), amphora_id,
             lb_network_ip=compute_obj.lb_network_ip,
             cached_zone=compute_obj.cached_zone,
-            image_id=compute_obj.image_id)
+            image_id=compute_obj.image_id,
+            compute_flavor=compute_obj.compute_flavor)
         return self.amphora_repo.get(db_apis.get_session(), id=amphora_id)
 
 

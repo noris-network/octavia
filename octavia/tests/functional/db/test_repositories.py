@@ -21,6 +21,7 @@ from oslo_config import cfg
 from oslo_config import fixture as oslo_fixture
 from oslo_db import exception as db_exception
 from oslo_utils import uuidutils
+from sqlalchemy.orm import exc as sa_exception
 
 from octavia.common import constants
 from octavia.common import data_models as models
@@ -62,6 +63,8 @@ class BaseRepositoryTest(base.OctaviaDBTestBase):
         self.l7policy_repo = repo.L7PolicyRepository()
         self.l7rule_repo = repo.L7RuleRepository()
         self.quota_repo = repo.QuotasRepository()
+        self.flavor_repo = repo.FlavorRepository()
+        self.flavor_profile_repo = repo.FlavorProfileRepository()
 
     def test_get_all_return_value(self):
         pool_list, _ = self.pool_repo.get_all(self.session,
@@ -76,12 +79,20 @@ class BaseRepositoryTest(base.OctaviaDBTestBase):
         member_list, _ = self.member_repo.get_all(self.session,
                                                   project_id=self.FAKE_UUID_2)
         self.assertIsInstance(member_list, list)
+        fp_list, _ = self.flavor_profile_repo.get_all(
+            self.session, id=self.FAKE_UUID_2)
+        self.assertIsInstance(fp_list, list)
+        flavor_list, _ = self.flavor_repo.get_all(
+            self.session, id=self.FAKE_UUID_2)
+        self.assertIsInstance(flavor_list, list)
 
 
 class AllRepositoriesTest(base.OctaviaDBTestBase):
 
     FAKE_UUID_1 = uuidutils.generate_uuid()
     FAKE_UUID_2 = uuidutils.generate_uuid()
+    FAKE_UUID_3 = uuidutils.generate_uuid()
+    FAKE_IP = '192.0.2.44'
 
     def setUp(self):
         super(AllRepositoriesTest, self).setUp()
@@ -96,13 +107,19 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
             enabled=True, provisioning_status=constants.ACTIVE,
             operating_status=constants.ONLINE,
             load_balancer_id=self.load_balancer.id)
+        self.amphora = self.repos.amphora.create(
+            self.session, id=uuidutils.generate_uuid(),
+            load_balancer_id=self.load_balancer.id,
+            compute_id=self.FAKE_UUID_3, status=constants.ACTIVE,
+            vrrp_ip=self.FAKE_IP, lb_network_ip=self.FAKE_IP)
 
     def test_all_repos_has_correct_repos(self):
         repo_attr_names = ('load_balancer', 'vip', 'health_monitor',
                            'session_persistence', 'pool', 'member', 'listener',
                            'listener_stats', 'amphora', 'sni',
                            'amphorahealth', 'vrrpgroup', 'l7rule', 'l7policy',
-                           'amp_build_slots', 'amp_build_req', 'quotas')
+                           'amp_build_slots', 'amp_build_req', 'quotas',
+                           'flavor', 'flavor_profile')
         for repo_attr in repo_attr_names:
             single_repo = getattr(self.repos, repo_attr, None)
             message = ("Class Repositories should have %s instance"
@@ -133,7 +150,8 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
               'provider': 'amphora',
               'server_group_id': uuidutils.generate_uuid(),
               'project_id': uuidutils.generate_uuid(),
-              'id': uuidutils.generate_uuid()}
+              'id': uuidutils.generate_uuid(), 'flavor_id': None,
+              'tags': ['test_tag']}
         vip = {'ip_address': '192.0.2.1',
                'port_id': uuidutils.generate_uuid(),
                'subnet_id': uuidutils.generate_uuid(),
@@ -160,7 +178,8 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
                 'enabled': True, 'operating_status': constants.ONLINE,
                 'project_id': uuidutils.generate_uuid(),
                 'id': uuidutils.generate_uuid(),
-                'provisioning_status': constants.ACTIVE}
+                'provisioning_status': constants.ACTIVE,
+                'tags': ['test_tag']}
         pool_dm = self.repos.create_pool_on_load_balancer(
             self.session, pool, listener_id=self.listener.id)
         pool_dm_dict = pool_dm.to_dict()
@@ -185,7 +204,8 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
                 'enabled': True, 'operating_status': constants.ONLINE,
                 'project_id': uuidutils.generate_uuid(),
                 'id': uuidutils.generate_uuid(),
-                'provisioning_status': constants.ACTIVE}
+                'provisioning_status': constants.ACTIVE,
+                'tags': ['test_tag']}
         sp = {'type': constants.SESSION_PERSISTENCE_HTTP_COOKIE,
               'cookie_name': 'cookie_monster',
               'pool_id': pool['id'],
@@ -223,7 +243,8 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
                 'enabled': True, 'operating_status': constants.ONLINE,
                 'project_id': uuidutils.generate_uuid(),
                 'id': uuidutils.generate_uuid(),
-                'provisioning_status': constants.ACTIVE}
+                'provisioning_status': constants.ACTIVE,
+                'tags': ['test_tag']}
         pool_dm = self.repos.create_pool_on_load_balancer(
             self.session, pool, listener_id=self.listener.id)
         update_pool = {'protocol': constants.PROTOCOL_TCP, 'name': 'up_pool'}
@@ -250,7 +271,8 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
                 'enabled': True, 'operating_status': constants.ONLINE,
                 'project_id': uuidutils.generate_uuid(),
                 'id': uuidutils.generate_uuid(),
-                'provisioning_status': constants.ACTIVE}
+                'provisioning_status': constants.ACTIVE,
+                'tags': ['test_tag']}
         sp = {'type': constants.SESSION_PERSISTENCE_HTTP_COOKIE,
               'cookie_name': 'cookie_monster',
               'pool_id': pool['id'],
@@ -1832,6 +1854,40 @@ class AllRepositoriesTest(base.OctaviaDBTestBase):
             self.session, project_id=project_id).in_use_member)
         conf.config(group='api_settings', auth_strategy=constants.TESTING)
 
+    def test_get_amphora_stats(self):
+        listener2_id = uuidutils.generate_uuid()
+        self.repos.listener_stats.create(
+            self.session, listener_id=self.listener.id,
+            amphora_id=self.amphora.id, bytes_in=1, bytes_out=2,
+            active_connections=3, total_connections=4, request_errors=5)
+        self.repos.listener_stats.create(
+            self.session, listener_id=listener2_id,
+            amphora_id=self.amphora.id, bytes_in=6, bytes_out=7,
+            active_connections=8, total_connections=9, request_errors=10)
+        amp_stats = self.repos.get_amphora_stats(self.session, self.amphora.id)
+        self.assertEqual(2, len(amp_stats))
+        for stats in amp_stats:
+            if stats['listener_id'] == self.listener.id:
+                self.assertEqual(self.load_balancer.id,
+                                 stats['loadbalancer_id'])
+                self.assertEqual(self.listener.id, stats['listener_id'])
+                self.assertEqual(self.amphora.id, stats['id'])
+                self.assertEqual(1, stats['bytes_in'])
+                self.assertEqual(2, stats['bytes_out'])
+                self.assertEqual(3, stats['active_connections'])
+                self.assertEqual(4, stats['total_connections'])
+                self.assertEqual(5, stats['request_errors'])
+            else:
+                self.assertEqual(self.load_balancer.id,
+                                 stats['loadbalancer_id'])
+                self.assertEqual(listener2_id, stats['listener_id'])
+                self.assertEqual(self.amphora.id, stats['id'])
+                self.assertEqual(6, stats['bytes_in'])
+                self.assertEqual(7, stats['bytes_out'])
+                self.assertEqual(8, stats['active_connections'])
+                self.assertEqual(9, stats['total_connections'])
+                self.assertEqual(10, stats['request_errors'])
+
 
 class PoolRepositoryTest(BaseRepositoryTest):
 
@@ -1841,7 +1897,7 @@ class PoolRepositoryTest(BaseRepositoryTest):
             description="pool_description", protocol=constants.PROTOCOL_HTTP,
             lb_algorithm=constants.LB_ALGORITHM_ROUND_ROBIN,
             provisioning_status=constants.ACTIVE,
-            operating_status=constants.ONLINE, enabled=True)
+            operating_status=constants.ONLINE, enabled=True, tags=['test_tag'])
         return pool
 
     def test_get(self):
@@ -1982,7 +2038,7 @@ class MemberRepositoryTest(BaseRepositoryTest):
             protocol=constants.PROTOCOL_HTTP,
             lb_algorithm=constants.LB_ALGORITHM_ROUND_ROBIN,
             provisioning_status=constants.ACTIVE,
-            operating_status=constants.ONLINE, enabled=True)
+            operating_status=constants.ONLINE, enabled=True, tags=['test_tag'])
 
     def create_member(self, member_id, project_id, pool_id, ip_address):
         member = self.member_repo.create(self.session, id=member_id,
@@ -2129,7 +2185,8 @@ class TestListenerRepositoryTest(BaseRepositoryTest):
             protocol=constants.PROTOCOL_HTTP, protocol_port=port,
             connection_limit=1, load_balancer_id=self.load_balancer.id,
             default_pool_id=default_pool_id, operating_status=constants.ONLINE,
-            provisioning_status=constants.ACTIVE, enabled=True, peer_port=1025)
+            provisioning_status=constants.ACTIVE, enabled=True, peer_port=1025,
+            tags=['test_tag'])
         return listener
 
     def create_amphora(self, amphora_id, loadbalancer_id):
@@ -2506,7 +2563,7 @@ class HealthMonitorRepositoryTest(BaseRepositoryTest):
             url_path="http://localhost:80/index.php",
             provisioning_status=constants.ACTIVE,
             operating_status=constants.ONLINE,
-            expected_codes="200", enabled=True)
+            expected_codes="200", enabled=True, tags=['test_tag'])
         self.assertEqual(hm_id, health_monitor.id)
         return health_monitor
 
@@ -2555,7 +2612,7 @@ class LoadBalancerRepositoryTest(BaseRepositoryTest):
                                  description="lb_description",
                                  provisioning_status=constants.ACTIVE,
                                  operating_status=constants.ONLINE,
-                                 enabled=True)
+                                 enabled=True, tags=['test_tag'])
         return lb
 
     def test_get(self):
@@ -2901,6 +2958,23 @@ class VipRepositoryTest(BaseRepositoryTest):
         self.assertIsNotNone(new_lb)
         self.assertIsNone(new_lb.vip)
 
+    def test_create_ipv6(self):
+        vip = self.vip_repo.create(self.session, load_balancer_id=self.lb.id,
+                                   ip_address="2001:DB8::10")
+        self.assertEqual(self.lb.id, vip.load_balancer_id)
+        self.assertEqual("2001:DB8::10", vip.ip_address)
+
+    # Note: This test is using the unique local address range to
+    #       validate that we handle a fully expaned IP address properly.
+    #       This is not possible with the documentation/testnet range.
+    def test_create_ipv6_full(self):
+        vip = self.vip_repo.create(
+            self.session, load_balancer_id=self.lb.id,
+            ip_address="fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
+        self.assertEqual(self.lb.id, vip.load_balancer_id)
+        self.assertEqual("fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+                         vip.ip_address)
+
 
 class SNIRepositoryTest(BaseRepositoryTest):
 
@@ -2985,8 +3059,20 @@ class AmphoraRepositoryTest(BaseRepositoryTest):
         self.assertEqual(amphora, new_amphora)
 
     def test_count(self):
-        amphora = self.create_amphora(self.FAKE_UUID_1)
-        amp_count = self.amphora_repo.count(self.session, id=amphora.id)
+        comp_id = uuidutils.generate_uuid()
+        self.create_amphora(self.FAKE_UUID_1, compute_id=comp_id)
+        self.create_amphora(self.FAKE_UUID_2, compute_id=comp_id,
+                            status=constants.DELETED)
+        amp_count = self.amphora_repo.count(self.session, compute_id=comp_id)
+        self.assertEqual(2, amp_count)
+
+    def test_count_not_deleted(self):
+        comp_id = uuidutils.generate_uuid()
+        self.create_amphora(self.FAKE_UUID_1, compute_id=comp_id)
+        self.create_amphora(self.FAKE_UUID_2, compute_id=comp_id,
+                            status=constants.DELETED)
+        amp_count = self.amphora_repo.count(self.session, compute_id=comp_id,
+                                            show_deleted=False)
         self.assertEqual(1, amp_count)
 
     def test_create(self):
@@ -3364,7 +3450,7 @@ class L7PolicyRepositoryTest(BaseRepositoryTest):
             protocol=constants.PROTOCOL_HTTP,
             lb_algorithm=constants.LB_ALGORITHM_ROUND_ROBIN,
             provisioning_status=constants.ACTIVE,
-            operating_status=constants.ONLINE, enabled=True)
+            operating_status=constants.ONLINE, enabled=True, tags=['test_tag'])
         return pool
 
     def create_l7policy(self, l7policy_id, listener_id, position,
@@ -3767,7 +3853,8 @@ class L7RuleRepositoryTest(BaseRepositoryTest):
             self.session, id=l7rule_id, l7policy_id=l7policy_id,
             type=type, compare_type=compare_type, key=key, value=value,
             invert=invert, provisioning_status=constants.ACTIVE,
-            operating_status=constants.ONLINE, enabled=enabled)
+            operating_status=constants.ONLINE, enabled=enabled,
+            tags=['test_tag'])
         return l7rule
 
     def test_get(self):
@@ -4170,3 +4257,109 @@ class TestQuotasRepository(BaseRepositoryTest):
         self.assertRaises(exceptions.NotFound,
                           self.quota_repo.delete,
                           self.session, 'bogus')
+
+
+class FlavorProfileRepositoryTest(BaseRepositoryTest):
+
+    def create_flavor_profile(self, fp_id):
+        fp = self.flavor_profile_repo.create(
+            self.session, id=fp_id, name="fp1", provider_name='pr1',
+            flavor_data="{'image': 'unbuntu'}")
+        return fp
+
+    def test_get(self):
+        fp = self.create_flavor_profile(fp_id=self.FAKE_UUID_1)
+        new_fp = self.flavor_profile_repo.get(self.session, id=fp.id)
+        self.assertIsInstance(new_fp, models.FlavorProfile)
+        self.assertEqual(fp, new_fp)
+
+    def test_get_all(self):
+        fp1 = self.create_flavor_profile(fp_id=self.FAKE_UUID_1)
+        fp2 = self.create_flavor_profile(fp_id=self.FAKE_UUID_2)
+        fp_list, _ = self.flavor_profile_repo.get_all(self.session)
+        self.assertIsInstance(fp_list, list)
+        self.assertEqual(2, len(fp_list))
+        self.assertEqual(fp1, fp_list[0])
+        self.assertEqual(fp2, fp_list[1])
+
+    def test_create(self):
+        fp = self.create_flavor_profile(fp_id=self.FAKE_UUID_1)
+        self.assertIsInstance(fp, models.FlavorProfile)
+        self.assertEqual(self.FAKE_UUID_1, fp.id)
+        self.assertEqual("fp1", fp.name)
+
+    def test_delete(self):
+        fp = self.create_flavor_profile(fp_id=self.FAKE_UUID_1)
+        self.flavor_profile_repo.delete(self.session, id=fp.id)
+        self.assertIsNone(self.flavor_profile_repo.get(
+            self.session, id=fp.id))
+
+
+class FlavorRepositoryTest(BaseRepositoryTest):
+
+    PROVIDER_NAME = 'provider1'
+
+    def create_flavor_profile(self):
+        fp = self.flavor_profile_repo.create(
+            self.session, id=uuidutils.generate_uuid(),
+            name="fp1", provider_name=self.PROVIDER_NAME,
+            flavor_data='{"image": "ubuntu"}')
+        return fp
+
+    def create_flavor(self, flavor_id, name):
+        fp = self.create_flavor_profile()
+        flavor = self.flavor_repo.create(
+            self.session, id=flavor_id, name=name,
+            flavor_profile_id=fp.id, description='test',
+            enabled=True)
+        return flavor
+
+    def test_get(self):
+        flavor = self.create_flavor(flavor_id=self.FAKE_UUID_2, name='flavor')
+        new_flavor = self.flavor_repo.get(self.session, id=flavor.id)
+        self.assertIsInstance(new_flavor, models.Flavor)
+        self.assertEqual(flavor, new_flavor)
+
+    def test_get_all(self):
+        fl1 = self.create_flavor(flavor_id=self.FAKE_UUID_2, name='flavor1')
+        fl2 = self.create_flavor(flavor_id=self.FAKE_UUID_3, name='flavor2')
+        fl_list, _ = self.flavor_repo.get_all(self.session)
+        self.assertIsInstance(fl_list, list)
+        self.assertEqual(2, len(fl_list))
+        self.assertEqual(fl1, fl_list[0])
+        self.assertEqual(fl2, fl_list[1])
+
+    def test_create(self):
+        fl = self.create_flavor(flavor_id=self.FAKE_UUID_2, name='fl1')
+        self.assertIsInstance(fl, models.Flavor)
+        self.assertEqual(self.FAKE_UUID_2, fl.id)
+        self.assertEqual("fl1", fl.name)
+
+    def test_delete(self):
+        fl = self.create_flavor(flavor_id=self.FAKE_UUID_2, name='fl1')
+        self.flavor_repo.delete(self.session, id=fl.id)
+        self.assertIsNone(self.flavor_repo.get(
+            self.session, id=fl.id))
+
+    def test_get_flavor_metadata_dict(self):
+        ref_dict = {'image': 'ubuntu'}
+        self.create_flavor(flavor_id=self.FAKE_UUID_2, name='fl1')
+        flavor_metadata_dict = self.flavor_repo.get_flavor_metadata_dict(
+            self.session, self.FAKE_UUID_2)
+        self.assertEqual(ref_dict, flavor_metadata_dict)
+
+        # Test missing flavor
+        self.assertRaises(sa_exception.NoResultFound,
+                          self.flavor_repo.get_flavor_metadata_dict,
+                          self.session, self.FAKE_UUID_1)
+
+    def test_get_flavor_provider(self):
+        self.create_flavor(flavor_id=self.FAKE_UUID_2, name='fl1')
+        provider_name = self.flavor_repo.get_flavor_provider(self.session,
+                                                             self.FAKE_UUID_2)
+        self.assertEqual(self.PROVIDER_NAME, provider_name)
+
+        # Test missing flavor
+        self.assertRaises(sa_exception.NoResultFound,
+                          self.flavor_repo.get_flavor_provider,
+                          self.session, self.FAKE_UUID_1)

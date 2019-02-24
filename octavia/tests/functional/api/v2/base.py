@@ -32,6 +32,14 @@ class BaseAPITest(base_db_test.OctaviaDBTestBase):
     BASE_PATH = '/v2'
     BASE_PATH_v2_0 = '/v2.0'
 
+    # /lbaas/flavors
+    FLAVORS_PATH = '/flavors'
+    FLAVOR_PATH = FLAVORS_PATH + '/{flavor_id}'
+
+    # /lbaas/flavorprofiles
+    FPS_PATH = '/flavorprofiles'
+    FP_PATH = FPS_PATH + '/{fp_id}'
+
     # /lbaas/loadbalancers
     LBS_PATH = '/lbaas/loadbalancers'
     LB_PATH = LBS_PATH + '/{lb_id}'
@@ -68,8 +76,12 @@ class BaseAPITest(base_db_test.OctaviaDBTestBase):
     AMPHORAE_PATH = '/octavia/amphorae'
     AMPHORA_PATH = AMPHORAE_PATH + '/{amphora_id}'
     AMPHORA_FAILOVER_PATH = AMPHORA_PATH + '/failover'
+    AMPHORA_STATS_PATH = AMPHORA_PATH + '/stats'
+    AMPHORA_CONFIG_PATH = AMPHORA_PATH + '/config'
 
     PROVIDERS_PATH = '/lbaas/providers'
+    FLAVOR_CAPABILITIES_PATH = (PROVIDERS_PATH +
+                                '/{provider}/flavor_capabilities')
 
     NOT_AUTHORIZED_BODY = {
         'debuginfo': None, 'faultcode': 'Client',
@@ -88,6 +100,7 @@ class BaseAPITest(base_db_test.OctaviaDBTestBase):
                          enabled_provider_drivers={
                              'amphora': 'Amp driver.',
                              'noop_driver': 'NoOp driver.',
+                             'noop_driver-alt': 'NoOp driver alt alisas.',
                              'octavia': 'Octavia driver.'})
         self.lb_repo = repositories.LoadBalancerRepository()
         self.listener_repo = repositories.ListenerRepository()
@@ -98,6 +111,8 @@ class BaseAPITest(base_db_test.OctaviaDBTestBase):
         self.l7rule_repo = repositories.L7RuleRepository()
         self.health_monitor_repo = repositories.HealthMonitorRepository()
         self.amphora_repo = repositories.AmphoraRepository()
+        self.flavor_repo = repositories.FlavorRepository()
+        self.flavor_profile_repo = repositories.FlavorProfileRepository()
         patcher2 = mock.patch('octavia.certificates.manager.barbican.'
                               'BarbicanCertManager')
         self.cert_manager_mock = patcher2.start()
@@ -181,6 +196,21 @@ class BaseAPITest(base_db_test.OctaviaDBTestBase):
                                 status=status,
                                 expect_errors=expect_errors)
         return response
+
+    def create_flavor(self, name, description, flavor_profile_id, enabled):
+        req_dict = {'name': name, 'description': description,
+                    'flavor_profile_id': flavor_profile_id,
+                    'enabled': enabled}
+        body = {'flavor': req_dict}
+        response = self.post(self.FLAVORS_PATH, body)
+        return response.json.get('flavor')
+
+    def create_flavor_profile(self, name, privider_name, flavor_data):
+        req_dict = {'name': name, 'provider_name': privider_name,
+                    constants.FLAVOR_DATA: flavor_data}
+        body = {'flavorprofile': req_dict}
+        response = self.post(self.FPS_PATH, body)
+        return response.json.get('flavorprofile')
 
     def create_load_balancer(self, vip_subnet_id,
                              **optionals):

@@ -24,6 +24,7 @@ from oslo_config import cfg
 from oslo_db import api as oslo_db_api
 from oslo_db import exception as db_exception
 from oslo_log import log as logging
+from oslo_serialization import jsonutils
 from oslo_utils import excutils
 from oslo_utils import uuidutils
 from sqlalchemy.orm import joinedload
@@ -51,7 +52,18 @@ class BaseRepository(object):
         :param filters: Filters to decide which entities should be retrieved.
         :returns: int
         """
-        return session.query(self.model_class).filter_by(**filters).count()
+        deleted = filters.pop('show_deleted', True)
+        model = session.query(self.model_class).filter_by(**filters)
+
+        if not deleted:
+            if hasattr(self.model_class, 'status'):
+                model = model.filter(
+                    self.model_class.status != consts.DELETED)
+            else:
+                model = model.filter(
+                    self.model_class.provisioning_status != consts.DELETED)
+
+        return model.count()
 
     def create(self, session, **model_kwargs):
         """Base create method for a database entity.
@@ -92,6 +104,10 @@ class BaseRepository(object):
         :returns: octavia.common.data_model
         """
         with session.begin(subtransactions=True):
+            tags = model_kwargs.pop('tags', None)
+            if tags:
+                resource = session.query(self.model_class).get(id)
+                resource.tags = tags
             session.query(self.model_class).filter_by(
                 id=id).update(model_kwargs)
 
@@ -183,6 +199,8 @@ class Repositories(object):
         self.amp_build_slots = AmphoraBuildSlotsRepository()
         self.amp_build_req = AmphoraBuildReqRepository()
         self.quotas = QuotasRepository()
+        self.flavor = FlavorRepository()
+        self.flavor_profile = FlavorProfileRepository()
 
     def create_load_balancer_and_vip(self, session, lb_dict, vip_dict):
         """Inserts load balancer and vip entities into the database.
@@ -673,6 +691,34 @@ class Repositories(object):
         session.expire_all()
         return self.load_balancer.get(session, id=lb_dm.id)
 
+    def get_amphora_stats(self, session, amp_id):
+        """Gets the statistics for all listeners on an amphora.
+
+        :param session: A Sql Alchemy database session.
+        :param amp_id: The amphora ID to query.
+        :returns: An amphora stats dictionary
+        """
+        with session.begin(subtransactions=True):
+            columns = (models.ListenerStatistics.__table__.columns +
+                       [models.Amphora.load_balancer_id])
+            amp_records = (
+                session.query(*columns)
+                .filter(models.ListenerStatistics.amphora_id == amp_id)
+                .filter(models.ListenerStatistics.amphora_id ==
+                        models.Amphora.id).all())
+            amp_stats = []
+            for amp in amp_records:
+                amp_stat = {consts.LOADBALANCER_ID: amp.load_balancer_id,
+                            consts.LISTENER_ID: amp.listener_id,
+                            'id': amp.amphora_id,
+                            consts.ACTIVE_CONNECTIONS: amp.active_connections,
+                            consts.BYTES_IN: amp.bytes_in,
+                            consts.BYTES_OUT: amp.bytes_out,
+                            consts.REQUEST_ERRORS: amp.request_errors,
+                            consts.TOTAL_CONNECTIONS: amp.total_connections}
+                amp_stats.append(amp_stat)
+            return amp_stats
+
 
 class LoadBalancerRepository(BaseRepository):
     model_class = models.LoadBalancer
@@ -697,6 +743,7 @@ class LoadBalancerRepository(BaseRepository):
             subqueryload(models.LoadBalancer.amphorae),
             subqueryload(models.LoadBalancer.pools),
             subqueryload(models.LoadBalancer.listeners),
+            subqueryload(models.LoadBalancer._tags),
             noload('*'))
 
         return super(LoadBalancerRepository, self).get_all(
@@ -817,6 +864,7 @@ class HealthMonitorRepository(BaseRepository):
         # no-load (blank) the tables we don't need
         query_options = (
             subqueryload(models.HealthMonitor.pool),
+            subqueryload(models.HealthMonitor._tags),
             noload('*'))
 
         return super(HealthMonitorRepository, self).get_all(
@@ -868,6 +916,7 @@ class PoolRepository(BaseRepository):
             subqueryload(models.Pool.load_balancer),
             subqueryload(models.Pool.members),
             subqueryload(models.Pool.session_persistence),
+            subqueryload(models.Pool._tags),
             noload('*'))
 
         return super(PoolRepository, self).get_all(
@@ -895,6 +944,7 @@ class MemberRepository(BaseRepository):
         # no-load (blank) the tables we don't need
         query_options = (
             subqueryload(models.Member.pool),
+            subqueryload(models.Member._tags),
             noload('*'))
 
         return super(MemberRepository, self).get_all(
@@ -940,6 +990,7 @@ class ListenerRepository(BaseRepository):
             subqueryload(models.Listener.l7policies),
             subqueryload(models.Listener.load_balancer),
             subqueryload(models.Listener.sni_containers),
+            subqueryload(models.Listener._tags),
             noload('*'))
 
         return super(ListenerRepository, self).get_all(
@@ -986,6 +1037,10 @@ class ListenerRepository(BaseRepository):
 
     def update(self, session, id, **model_kwargs):
         with session.begin(subtransactions=True):
+            tags = model_kwargs.pop('tags', None)
+            if tags:
+                resource = session.query(self.model_class).get(id)
+                resource.tags = tags
             listener_db = session.query(self.model_class).filter_by(
                 id=id).first()
             # Verify any newly specified default_pool_id exists
@@ -1461,6 +1516,7 @@ class L7RuleRepository(BaseRepository):
         # no-load (blank) the tables we don't need
         query_options = (
             subqueryload(models.L7Rule.l7policy),
+            subqueryload(models.L7Rule._tags),
             noload('*'))
 
         return super(L7RuleRepository, self).get_all(
@@ -1556,6 +1612,7 @@ class L7PolicyRepository(BaseRepository):
             subqueryload(models.L7Policy.l7rules),
             subqueryload(models.L7Policy.listener),
             subqueryload(models.L7Policy.redirect_pool),
+            subqueryload(models.L7Policy._tags),
             noload('*'))
 
         if not deleted:
@@ -1725,3 +1782,30 @@ class QuotasRepository(BaseRepository):
             quotas.member = None
             quotas.pool = None
             session.flush()
+
+
+class FlavorRepository(BaseRepository):
+    model_class = models.Flavor
+
+    def get_flavor_metadata_dict(self, session, flavor_id):
+        with session.begin(subtransactions=True):
+            flavor_metadata_json = (
+                session.query(models.FlavorProfile.flavor_data)
+                .filter(models.Flavor.id == flavor_id)
+                .filter(
+                    models.Flavor.flavor_profile_id == models.FlavorProfile.id)
+                .one()[0])
+            result_dict = ({} if flavor_metadata_json is None
+                           else jsonutils.loads(flavor_metadata_json))
+            return result_dict
+
+    def get_flavor_provider(self, session, flavor_id):
+        with session.begin(subtransactions=True):
+            return (session.query(models.FlavorProfile.provider_name)
+                    .filter(models.Flavor.id == flavor_id)
+                    .filter(models.Flavor.flavor_profile_id ==
+                            models.FlavorProfile.id).one()[0])
+
+
+class FlavorProfileRepository(BaseRepository):
+    model_class = models.FlavorProfile

@@ -69,6 +69,7 @@ class TestMember(base.BaseAPITest):
             member_id=api_member.get('id'))).json.get(self.root_tag)
         self.assertEqual(api_member, response)
         self.assertEqual(api_member.get('name'), '')
+        self.assertEqual([], api_member['tags'])
 
     def test_get_authorized(self):
         api_member = self.create_member(
@@ -128,10 +129,12 @@ class TestMember(base.BaseAPITest):
 
     def test_get_all(self):
         api_m_1 = self.create_member(
-            self.pool_id, '192.0.2.1', 80).get(self.root_tag)
+            self.pool_id, '192.0.2.1', 80,
+            tags=['test_tag1']).get(self.root_tag)
         self.set_lb_status(self.lb_id)
         api_m_2 = self.create_member(
-            self.pool_id, '192.0.2.2', 80).get(self.root_tag)
+            self.pool_id, '192.0.2.2', 80,
+            tags=['test_tag2']).get(self.root_tag)
         self.set_lb_status(self.lb_id)
         # Original objects didn't have the updated operating/provisioning
         # status that exists in the DB.
@@ -342,6 +345,102 @@ class TestMember(base.BaseAPITest):
         self.assertEqual(mem1['id'],
                          members['members'][0]['id'])
 
+    def test_get_all_tags_filter(self):
+        mem1 = self.create_member(
+            self.pool_id,
+            '192.0.2.1',
+            80,
+            name='member1',
+            tags=['test_tag1', 'test_tag2']
+        ).get(self.root_tag)
+        self.set_lb_status(self.lb_id)
+        mem2 = self.create_member(
+            self.pool_id,
+            '192.0.2.2',
+            80,
+            name='member2',
+            tags=['test_tag2', 'test_tag3']
+        ).get(self.root_tag)
+        self.set_lb_status(self.lb_id)
+        mem3 = self.create_member(
+            self.pool_id,
+            '192.0.2.3',
+            80,
+            name='member3',
+            tags=['test_tag4', 'test_tag5']
+        ).get(self.root_tag)
+        self.set_lb_status(self.lb_id)
+
+        mems = self.get(
+            self.members_path,
+            params={'tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(2, len(mems))
+        self.assertEqual(
+            [mem1.get('id'), mem2.get('id')],
+            [mem.get('id') for mem in mems]
+        )
+
+        mems = self.get(
+            self.members_path,
+            params={'tags': ['test_tag2', 'test_tag3']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(1, len(mems))
+        self.assertEqual(
+            [mem2.get('id')],
+            [mem.get('id') for mem in mems]
+        )
+
+        mems = self.get(
+            self.members_path,
+            params={'tags-any': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(2, len(mems))
+        self.assertEqual(
+            [mem1.get('id'), mem2.get('id')],
+            [mem.get('id') for mem in mems]
+        )
+
+        mems = self.get(
+            self.members_path,
+            params={'not-tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(1, len(mems))
+        self.assertEqual(
+            [mem3.get('id')],
+            [mem.get('id') for mem in mems]
+        )
+
+        mems = self.get(
+            self.members_path,
+            params={'not-tags-any': ['test_tag2', 'test_tag4']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(0, len(mems))
+
+        mems = self.get(
+            self.members_path,
+            params={'tags': 'test_tag2',
+                    'tags-any': ['test_tag1', 'test_tag3']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(2, len(mems))
+        self.assertEqual(
+            [mem1.get('id'), mem2.get('id')],
+            [mem.get('id') for mem in mems]
+        )
+
+        mems = self.get(
+            self.members_path,
+            params={'tags': 'test_tag2', 'not-tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(mems, list)
+        self.assertEqual(0, len(mems))
+
     def test_empty_get_all(self):
         response = self.get(self.members_path).json.get(self.root_tag_list)
         self.assertIsInstance(response, list)
@@ -393,11 +492,13 @@ class TestMember(base.BaseAPITest):
                     return_value=override_credentials):
 
                 api_member = self.create_member(
-                    self.pool_id, '192.0.2.1', 80).get(self.root_tag)
+                    self.pool_id, '192.0.2.1', 80,
+                    tags=['test_tag']).get(self.root_tag)
         self.conf.config(group='api_settings', auth_strategy=auth_strategy)
 
         self.assertEqual('192.0.2.1', api_member['address'])
         self.assertEqual(80, api_member['protocol_port'])
+        self.assertEqual(['test_tag'], api_member['tags'])
         self.assertIsNotNone(api_member['created_at'])
         self.assertIsNone(api_member['updated_at'])
         self.assert_correct_status(
@@ -528,8 +629,10 @@ class TestMember(base.BaseAPITest):
         mock_driver.name = 'noop_driver'
         mock_get_driver.return_value = mock_driver
 
-        member5 = {'address': '192.0.2.5', 'protocol_port': 80}
-        member6 = {'address': '192.0.2.6', 'protocol_port': 80}
+        member5 = {'address': '192.0.2.5', 'protocol_port': 80,
+                   'tags': ['test_tag1']}
+        member6 = {'address': '192.0.2.6', 'protocol_port': 80,
+                   'tags': ['test_tag2']}
 
         req_dict = [member5, member6]
         body = {self.root_tag_list: req_dict}
@@ -540,8 +643,8 @@ class TestMember(base.BaseAPITest):
         ).json.get(self.root_tag_list)
 
         expected_members = [
-            ('192.0.2.5', 80, 'PENDING_CREATE'),
-            ('192.0.2.6', 80, 'PENDING_CREATE'),
+            ('192.0.2.5', 80, 'PENDING_CREATE', ['test_tag1']),
+            ('192.0.2.6', 80, 'PENDING_CREATE', ['test_tag2']),
         ]
 
         member_ids = {}
@@ -550,7 +653,8 @@ class TestMember(base.BaseAPITest):
             self.assertIn(
                 (rm['address'],
                  rm['protocol_port'],
-                 rm['provisioning_status']), expected_members)
+                 rm['provisioning_status'],
+                 rm['tags']), expected_members)
             member_ids[(rm['address'], rm['protocol_port'])] = rm['id']
 
             provider_dict = driver_utils.member_dict_to_provider_dict(rm)
@@ -825,9 +929,9 @@ class TestMember(base.BaseAPITest):
         new_name = "name2"
         api_member = self.create_member(
             self.pool_with_listener_id, '192.0.2.1', 80,
-            name=old_name).get(self.root_tag)
+            name=old_name, tags=['old_tag']).get(self.root_tag)
         self.set_lb_status(self.lb_id)
-        new_member = {'name': new_name}
+        new_member = {'name': new_name, 'tags': ['new_tag']}
         self.conf = self.useFixture(oslo_fixture.Config(cfg.CONF))
         auth_strategy = self.conf.conf.api_settings.get('auth_strategy')
         self.conf.config(group='api_settings', auth_strategy=constants.TESTING)
@@ -866,6 +970,7 @@ class TestMember(base.BaseAPITest):
             member_prov_status=constants.PENDING_UPDATE)
         self.set_lb_status(self.lb_id)
         self.assertEqual(new_name, response.get('name'))
+        self.assertEqual(['new_tag'], response['tags'])
         self.assertEqual(api_member.get('created_at'),
                          response.get('created_at'))
         self.assert_correct_status(

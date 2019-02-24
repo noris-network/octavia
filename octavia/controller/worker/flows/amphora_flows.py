@@ -55,11 +55,12 @@ class AmphoraFlows(object):
 
             create_amphora_flow.add(compute_tasks.CertComputeCreate(
                 requires=(constants.AMPHORA_ID, constants.SERVER_PEM,
-                          constants.BUILD_TYPE_PRIORITY),
+                          constants.BUILD_TYPE_PRIORITY, constants.FLAVOR),
                 provides=constants.COMPUTE_ID))
         else:
             create_amphora_flow.add(compute_tasks.ComputeCreate(
-                requires=(constants.AMPHORA_ID, constants.BUILD_TYPE_PRIORITY),
+                requires=(constants.AMPHORA_ID, constants.BUILD_TYPE_PRIORITY,
+                          constants.FLAVOR),
                 provides=constants.COMPUTE_ID))
         create_amphora_flow.add(database_tasks.MarkAmphoraBootingInDB(
             requires=(constants.AMPHORA_ID, constants.COMPUTE_ID)))
@@ -93,6 +94,10 @@ class AmphoraFlows(object):
             name=sf_name + '-' + constants.RELOAD_AMPHORA,
             requires=constants.AMPHORA_ID,
             provides=constants.AMPHORA))
+
+        post_map_amp_to_lb.add(amphora_driver_tasks.AmphoraConfigUpdate(
+            name=sf_name + '-' + constants.AMPHORA_CONFIG_UPDATE_TASK,
+            requires=(constants.AMPHORA, constants.FLAVOR)))
 
         if role == constants.ROLE_MASTER:
             post_map_amp_to_lb.add(database_tasks.MarkAmphoraMasterInDB(
@@ -140,6 +145,7 @@ class AmphoraFlows(object):
                         constants.SERVER_PEM,
                         constants.BUILD_TYPE_PRIORITY,
                         constants.SERVER_GROUP_ID,
+                        constants.FLAVOR
                     ),
                     provides=constants.COMPUTE_ID))
             else:
@@ -149,6 +155,7 @@ class AmphoraFlows(object):
                         constants.AMPHORA_ID,
                         constants.SERVER_PEM,
                         constants.BUILD_TYPE_PRIORITY,
+                        constants.FLAVOR
                     ),
                     provides=constants.COMPUTE_ID))
         else:
@@ -159,6 +166,7 @@ class AmphoraFlows(object):
                         constants.AMPHORA_ID,
                         constants.BUILD_TYPE_PRIORITY,
                         constants.SERVER_GROUP_ID,
+                        constants.FLAVOR
                     ),
                     provides=constants.COMPUTE_ID))
             else:
@@ -167,6 +175,7 @@ class AmphoraFlows(object):
                     requires=(
                         constants.AMPHORA_ID,
                         constants.BUILD_TYPE_PRIORITY,
+                        constants.FLAVOR
                     ),
                     provides=constants.COMPUTE_ID))
 
@@ -247,7 +256,7 @@ class AmphoraFlows(object):
         # Setup the task that maps an amphora to a load balancer
         allocate_and_associate_amp = database_tasks.MapLoadbalancerToAmphora(
             name=sf_name + '-' + constants.MAP_LOADBALANCER_TO_AMPHORA,
-            requires=constants.LOADBALANCER_ID,
+            requires=(constants.LOADBALANCER_ID, constants.FLAVOR),
             provides=constants.AMPHORA_ID)
 
         # Define a subflow for if we successfully map an amphora
@@ -268,7 +277,45 @@ class AmphoraFlows(object):
                              decider=self._create_new_amp_for_lb_decider,
                              decider_depth='flow')
 
+        # Plug the network
+        # todo(xgerman): Rework failover flow
+        if prefix != constants.FAILOVER_AMPHORA_FLOW:
+            sf_name = prefix + '-' + constants.AMP_PLUG_NET_SUBFLOW
+            amp_for_lb_net_flow = linear_flow.Flow(sf_name)
+            amp_for_lb_net_flow.add(amp_for_lb_flow)
+            amp_for_lb_net_flow.add(*self._get_amp_net_subflow(sf_name))
+            return amp_for_lb_net_flow
+
         return amp_for_lb_flow
+
+    def _get_amp_net_subflow(self, sf_name):
+        flows = []
+        flows.append(network_tasks.PlugVIPAmpphora(
+            name=sf_name + '-' + constants.PLUG_VIP_AMPHORA,
+            requires=(constants.LOADBALANCER, constants.AMPHORA,
+                      constants.SUBNET),
+            provides=constants.AMP_DATA))
+
+        flows.append(network_tasks.ApplyQosAmphora(
+            name=sf_name + '-' + constants.APPLY_QOS_AMP,
+            requires=(constants.LOADBALANCER, constants.AMP_DATA,
+                      constants.UPDATE_DICT)))
+        flows.append(database_tasks.UpdateAmphoraVIPData(
+            name=sf_name + '-' + constants.UPDATE_AMPHORA_VIP_DATA,
+            requires=constants.AMP_DATA))
+        flows.append(database_tasks.ReloadLoadBalancer(
+            name=sf_name + '-' + constants.RELOAD_LB_AFTER_PLUG_VIP,
+            requires=constants.LOADBALANCER_ID,
+            provides=constants.LOADBALANCER))
+        flows.append(network_tasks.GetAmphoraeNetworkConfigs(
+            name=sf_name + '-' + constants.GET_AMP_NETWORK_CONFIG,
+            requires=constants.LOADBALANCER,
+            provides=constants.AMPHORAE_NETWORK_CONFIG))
+        flows.append(amphora_driver_tasks.AmphoraePostVIPPlug(
+            name=sf_name + '-' + constants.AMP_POST_VIP_PLUG,
+            requires=(constants.LOADBALANCER,
+                      constants.AMPHORAE_NETWORK_CONFIG)))
+        return flows
 
     def get_delete_amphora_flow(self):
         """Creates a flow to delete an amphora.
@@ -524,3 +571,19 @@ class AmphoraFlows(object):
             requires=constants.AMPHORA))
 
         return rotated_amphora_flow
+
+    def update_amphora_config_flow(self):
+        """Creates a flow to update the amphora agent configuration.
+
+        :returns: The flow for updating an amphora
+        """
+        update_amphora_flow = linear_flow.Flow(
+            constants.UPDATE_AMPHORA_CONFIG_FLOW)
+
+        update_amphora_flow.add(lifecycle_tasks.AmphoraToErrorOnRevertTask(
+            requires=constants.AMPHORA))
+
+        update_amphora_flow.add(amphora_driver_tasks.AmphoraConfigUpdate(
+            requires=(constants.AMPHORA, constants.FLAVOR)))
+
+        return update_amphora_flow

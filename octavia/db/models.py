@@ -1,5 +1,6 @@
 #    Copyright 2014 Rackspace
 #    Copyright 2016 Blue Box, an IBM Company
+#    Copyright 2017 Walmart Stores Inc.
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -13,6 +14,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+
 from oslo_db.sqlalchemy import models
 import sqlalchemy as sa
 from sqlalchemy.ext import orderinglist
@@ -21,6 +23,8 @@ from sqlalchemy.orm import validates
 from sqlalchemy.sql import func
 
 from octavia.api.v2.types import amphora
+from octavia.api.v2.types import flavor_profile
+from octavia.api.v2.types import flavors
 from octavia.api.v2.types import health_monitor
 from octavia.api.v2.types import l7policy
 from octavia.api.v2.types import l7rule
@@ -169,7 +173,8 @@ class ListenerStatistics(base_models.BASE):
 
 
 class Member(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
-             models.TimestampMixin, base_models.NameMixin):
+             models.TimestampMixin, base_models.NameMixin,
+             base_models.TagMixin):
 
     __data_model__ = data_models.Member
 
@@ -206,10 +211,18 @@ class Member(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
     enabled = sa.Column(sa.Boolean(), nullable=False)
     pool = orm.relationship("Pool", back_populates="members")
 
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==Member.id)'
+    )
+
 
 class HealthMonitor(base_models.BASE, base_models.IdMixin,
                     base_models.ProjectMixin, models.TimestampMixin,
-                    base_models.NameMixin):
+                    base_models.NameMixin, base_models.TagMixin):
 
     __data_model__ = data_models.HealthMonitor
 
@@ -252,10 +265,17 @@ class HealthMonitor(base_models.BASE, base_models.IdMixin,
         sa.ForeignKey("operating_status.name",
                       name="fk_health_monitor_operating_status_name"),
         nullable=False)
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==HealthMonitor.id)'
+    )
 
 
 class Pool(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
-           models.TimestampMixin, base_models.NameMixin):
+           models.TimestampMixin, base_models.NameMixin, base_models.TagMixin):
 
     __data_model__ = data_models.Pool
 
@@ -300,6 +320,13 @@ class Pool(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
                                           back_populates="default_pool")
     l7policies = orm.relationship("L7Policy", uselist=True,
                                   back_populates="redirect_pool")
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==Pool.id)'
+    )
 
     # This property should be a unique list of any listeners that reference
     # this pool as its default_pool and any listeners referenced by enabled
@@ -321,7 +348,7 @@ class Pool(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
 
 class LoadBalancer(base_models.BASE, base_models.IdMixin,
                    base_models.ProjectMixin, models.TimestampMixin,
-                   base_models.NameMixin):
+                   base_models.NameMixin, base_models.TagMixin):
 
     __data_model__ = data_models.LoadBalancer
 
@@ -355,6 +382,16 @@ class LoadBalancer(base_models.BASE, base_models.IdMixin,
                              back_populates="load_balancer")
     listeners = orm.relationship('Listener', cascade='delete', uselist=True,
                                  back_populates='load_balancer')
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==LoadBalancer.id)'
+    )
+    flavor_id = sa.Column(
+        sa.String(36),
+        sa.ForeignKey("flavor.id", name="fk_lb_flavor_id"), nullable=True)
 
 
 class VRRPGroup(base_models.BASE):
@@ -402,7 +439,7 @@ class Vip(base_models.BASE):
 
 class Listener(base_models.BASE, base_models.IdMixin,
                base_models.ProjectMixin, models.TimestampMixin,
-               base_models.NameMixin):
+               base_models.NameMixin, base_models.TagMixin):
 
     __data_model__ = data_models.Listener
 
@@ -461,6 +498,14 @@ class Listener(base_models.BASE, base_models.IdMixin,
     timeout_member_connect = sa.Column(sa.Integer, nullable=True)
     timeout_member_data = sa.Column(sa.Integer, nullable=True)
     timeout_tcp_inspect = sa.Column(sa.Integer, nullable=True)
+
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==Listener.id)'
+    )
 
     # This property should be a unique list of the default_pool and anything
     # referenced by enabled L7Policies with at least one rule that also
@@ -537,6 +582,7 @@ class Amphora(base_models.BASE, base_models.IdMixin, models.TimestampMixin):
     image_id = sa.Column(sa.String(36), nullable=True)
     load_balancer = orm.relationship("LoadBalancer", uselist=False,
                                      back_populates='amphorae')
+    compute_flavor = sa.Column(sa.String(255), nullable=True)
 
 
 class AmphoraHealth(base_models.BASE):
@@ -552,7 +598,7 @@ class AmphoraHealth(base_models.BASE):
 
 
 class L7Rule(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
-             models.TimestampMixin):
+             models.TimestampMixin, base_models.TagMixin):
 
     __data_model__ = data_models.L7Rule
 
@@ -592,10 +638,18 @@ class L7Rule(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
         sa.ForeignKey("operating_status.name",
                       name="fk_l7rule_operating_status_name"),
         nullable=False)
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==L7Rule.id)'
+    )
 
 
 class L7Policy(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
-               models.TimestampMixin, base_models.NameMixin):
+               models.TimestampMixin, base_models.NameMixin,
+               base_models.TagMixin):
 
     __data_model__ = data_models.L7Policy
 
@@ -642,6 +696,13 @@ class L7Policy(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
         sa.ForeignKey("operating_status.name",
                       name="fk_l7policy_operating_status_name"),
         nullable=False)
+    _tags = orm.relationship(
+        'Tags',
+        single_parent=True,
+        lazy='subquery',
+        cascade='all,delete-orphan',
+        primaryjoin='and_(foreign(Tags.resource_id)==L7Policy.id)'
+    )
 
 
 class Quotas(base_models.BASE):
@@ -663,3 +724,40 @@ class Quotas(base_models.BASE):
     in_use_load_balancer = sa.Column(sa.Integer(), nullable=True)
     in_use_member = sa.Column(sa.Integer(), nullable=True)
     in_use_pool = sa.Column(sa.Integer(), nullable=True)
+
+
+class FlavorProfile(base_models.BASE, base_models.IdMixin,
+                    base_models.NameMixin):
+
+    __data_model__ = data_models.FlavorProfile
+
+    __tablename__ = "flavor_profile"
+
+    __v2_wsme__ = flavor_profile.FlavorProfileResponse
+
+    provider_name = sa.Column(sa.String(255), nullable=False)
+    flavor_data = sa.Column(sa.String(4096), nullable=False)
+
+
+class Flavor(base_models.BASE,
+             base_models.IdMixin,
+             base_models.NameMixin):
+
+    __data_model__ = data_models.Flavor
+
+    __tablename__ = "flavor"
+
+    __v2_wsme__ = flavors.FlavorResponse
+
+    __table_args__ = (
+        sa.UniqueConstraint('name',
+                            name='uq_flavor_name'),
+    )
+
+    description = sa.Column(sa.String(255), nullable=True)
+    enabled = sa.Column(sa.Boolean(), nullable=False)
+    flavor_profile_id = sa.Column(
+        sa.String(36),
+        sa.ForeignKey("flavor_profile.id",
+                      name="fk_flavor_flavor_profile_id"),
+        nullable=False)

@@ -141,7 +141,8 @@ class TestControllerWorker(base.TestCase):
             assert_called_once_with(
                 'TEST',
                 store={constants.BUILD_TYPE_PRIORITY:
-                       constants.LB_CREATE_SPARES_POOL_PRIORITY}))
+                       constants.LB_CREATE_SPARES_POOL_PRIORITY,
+                       constants.FLAVOR: None}))
 
         _flow_mock.run.assert_called_once_with()
 
@@ -420,10 +421,12 @@ class TestControllerWorker(base.TestCase):
         store = {
             constants.LOADBALANCER_ID: LB_ID,
             'update_dict': {'topology': constants.TOPOLOGY_SINGLE},
-            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY
+            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY,
+            constants.FLAVOR: None
         }
         lb_mock = mock.MagicMock()
         lb_mock.listeners = []
+        lb_mock.topology = constants.TOPOLOGY_SINGLE
         mock_lb_repo_get.side_effect = [None, None, None, lb_mock]
 
         cw = controller_worker.ControllerWorker()
@@ -465,8 +468,11 @@ class TestControllerWorker(base.TestCase):
         store = {
             constants.LOADBALANCER_ID: LB_ID,
             'update_dict': {'topology': constants.TOPOLOGY_ACTIVE_STANDBY},
-            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY
+            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY,
+            constants.FLAVOR: None
         }
+        setattr(mock_lb_repo_get.return_value, 'topology',
+                constants.TOPOLOGY_ACTIVE_STANDBY)
         setattr(mock_lb_repo_get.return_value, 'listeners', [])
 
         cw = controller_worker.ControllerWorker()
@@ -501,14 +507,16 @@ class TestControllerWorker(base.TestCase):
 
         listeners = [data_models.Listener(id='listener1'),
                      data_models.Listener(id='listener2')]
-        lb = data_models.LoadBalancer(id=LB_ID, listeners=listeners)
+        lb = data_models.LoadBalancer(id=LB_ID, listeners=listeners,
+                                      topology=constants.TOPOLOGY_SINGLE)
         mock_lb_repo_get.return_value = lb
         mock_eng = mock.Mock()
         mock_taskflow_load.return_value = mock_eng
         store = {
             constants.LOADBALANCER_ID: LB_ID,
             'update_dict': {'topology': constants.TOPOLOGY_SINGLE},
-            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY
+            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY,
+            constants.FLAVOR: None
         }
 
         cw = controller_worker.ControllerWorker()
@@ -551,21 +559,22 @@ class TestControllerWorker(base.TestCase):
 
         listeners = [data_models.Listener(id='listener1'),
                      data_models.Listener(id='listener2')]
-        lb = data_models.LoadBalancer(id=LB_ID, listeners=listeners)
+        lb = data_models.LoadBalancer(
+            id=LB_ID, listeners=listeners,
+            topology=constants.TOPOLOGY_ACTIVE_STANDBY)
         mock_lb_repo_get.return_value = lb
         mock_eng = mock.Mock()
         mock_taskflow_load.return_value = mock_eng
         store = {
             constants.LOADBALANCER_ID: LB_ID,
             'update_dict': {'topology': constants.TOPOLOGY_ACTIVE_STANDBY},
-            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY
+            constants.BUILD_TYPE_PRIORITY: constants.LB_CREATE_NORMAL_PRIORITY,
+            constants.FLAVOR: None
         }
 
         cw = controller_worker.ControllerWorker()
         cw.create_load_balancer(LB_ID)
 
-        # mock_create_single_topology.assert_not_called()
-        # mock_create_active_standby_topology.assert_called_once()
         mock_get_create_load_balancer_flow.assert_called_with(
             topology=constants.TOPOLOGY_ACTIVE_STANDBY, listeners=lb.listeners)
         mock_taskflow_load.assert_called_with(
@@ -1134,6 +1143,8 @@ class TestControllerWorker(base.TestCase):
 
         _flow_mock.run.assert_called_once_with()
 
+    @mock.patch('octavia.db.repositories.FlavorRepository.'
+                'get_flavor_metadata_dict', return_value={})
     @mock.patch('octavia.controller.worker.flows.'
                 'amphora_flows.AmphoraFlows.get_failover_flow',
                 return_value=_flow_mock)
@@ -1141,6 +1152,7 @@ class TestControllerWorker(base.TestCase):
     def test_failover_amphora(self,
                               mock_update,
                               mock_get_failover_flow,
+                              mock_get_flavor_meta,
                               mock_api_get_session,
                               mock_dyn_log_listener,
                               mock_taskflow_load,
@@ -1165,7 +1177,8 @@ class TestControllerWorker(base.TestCase):
                        constants.LOADBALANCER_ID:
                            _amphora_mock.load_balancer_id,
                        constants.BUILD_TYPE_PRIORITY:
-                           constants.LB_CREATE_FAILOVER_PRIORITY
+                           constants.LB_CREATE_FAILOVER_PRIORITY,
+                       constants.FLAVOR: {}
                        }))
 
         _flow_mock.run.assert_called_once_with()
@@ -1321,6 +1334,8 @@ class TestControllerWorker(base.TestCase):
         mock_update.assert_called_with(_db_session, 123,
                                        provisioning_status=constants.ERROR)
 
+    @mock.patch('octavia.db.repositories.FlavorRepository.'
+                'get_flavor_metadata_dict', return_value={})
     @mock.patch('octavia.controller.worker.flows.'
                 'amphora_flows.AmphoraFlows.get_failover_flow',
                 return_value=_flow_mock)
@@ -1330,8 +1345,9 @@ class TestControllerWorker(base.TestCase):
     @mock.patch('octavia.db.repositories.LoadBalancerRepository.update')
     def test_failover_amphora_anti_affinity(self,
                                             mock_update,
-                                            mock_get_update_listener_flow,
                                             mock_get_lb_for_amphora,
+                                            mock_get_update_listener_flow,
+                                            mock_get_flavor_meta,
                                             mock_api_get_session,
                                             mock_dyn_log_listener,
                                             mock_taskflow_load,
@@ -1360,6 +1376,7 @@ class TestControllerWorker(base.TestCase):
                        constants.BUILD_TYPE_PRIORITY:
                            constants.LB_CREATE_FAILOVER_PRIORITY,
                        constants.SERVER_GROUP_ID: "123",
+                       constants.FLAVOR: {}
                        }))
 
         _flow_mock.run.assert_called_once_with()
@@ -1390,4 +1407,59 @@ class TestControllerWorker(base.TestCase):
                                  store={constants.AMPHORA: _amphora_mock,
                                         constants.AMPHORA_ID:
                                             _amphora_mock.id}))
+        _flow_mock.run.assert_called_once_with()
+
+    @mock.patch('octavia.db.repositories.FlavorRepository.'
+                'get_flavor_metadata_dict')
+    @mock.patch('octavia.db.repositories.AmphoraRepository.get_lb_for_amphora')
+    @mock.patch('octavia.controller.worker.flows.'
+                'amphora_flows.AmphoraFlows.update_amphora_config_flow',
+                return_value=_flow_mock)
+    def test_update_amphora_agent_config(self,
+                                         mock_update_flow,
+                                         mock_get_lb_for_amp,
+                                         mock_flavor_meta,
+                                         mock_api_get_session,
+                                         mock_dyn_log_listener,
+                                         mock_taskflow_load,
+                                         mock_pool_repo_get,
+                                         mock_member_repo_get,
+                                         mock_l7rule_repo_get,
+                                         mock_l7policy_repo_get,
+                                         mock_listener_repo_get,
+                                         mock_lb_repo_get,
+                                         mock_health_mon_repo_get,
+                                         mock_amp_repo_get):
+        _flow_mock.reset_mock()
+        mock_lb = mock.MagicMock()
+        mock_lb.flavor_id = 'vanilla'
+        mock_get_lb_for_amp.return_value = mock_lb
+        mock_flavor_meta.return_value = {'test': 'dict'}
+        cw = controller_worker.ControllerWorker()
+        cw.update_amphora_agent_config(AMP_ID)
+
+        mock_amp_repo_get.assert_called_once_with(_db_session, id=AMP_ID)
+        mock_get_lb_for_amp.assert_called_once_with(_db_session, AMP_ID)
+        mock_flavor_meta.assert_called_once_with(_db_session, 'vanilla')
+        (base_taskflow.BaseTaskFlowEngine._taskflow_load.
+         assert_called_once_with(_flow_mock,
+                                 store={constants.AMPHORA: _amphora_mock,
+                                        constants.FLAVOR: {'test': 'dict'}}))
+        _flow_mock.run.assert_called_once_with()
+
+        # Test with no flavor
+        _flow_mock.reset_mock()
+        mock_amp_repo_get.reset_mock()
+        mock_get_lb_for_amp.reset_mock()
+        mock_flavor_meta.reset_mock()
+        base_taskflow.BaseTaskFlowEngine._taskflow_load.reset_mock()
+        mock_lb.flavor_id = None
+        cw.update_amphora_agent_config(AMP_ID)
+        mock_amp_repo_get.assert_called_once_with(_db_session, id=AMP_ID)
+        mock_get_lb_for_amp.assert_called_once_with(_db_session, AMP_ID)
+        mock_flavor_meta.assert_not_called()
+        (base_taskflow.BaseTaskFlowEngine._taskflow_load.
+         assert_called_once_with(_flow_mock,
+                                 store={constants.AMPHORA: _amphora_mock,
+                                        constants.FLAVOR: {}}))
         _flow_mock.run.assert_called_once_with()

@@ -103,7 +103,7 @@ class L7RuleValidation(APIException):
 
 
 class SingleCreateDetailsMissing(APIException):
-    msg = _("Missing details for %(type)s object: %(name)")
+    msg = _("Missing details for %(type)s object: %(name)s")
     code = 400
 
 
@@ -213,6 +213,11 @@ class ComputeGetInterfaceException(OctaviaException):
 
 class IDAlreadyExists(APIException):
     msg = _('Already an entity with that specified id.')
+    code = 409
+
+
+class RecordAlreadyExists(APIException):
+    msg = _('A %(field)s of %(name)s already exists.')
     code = 409
 
 
@@ -363,3 +368,17 @@ class ProviderUnsupportedOptionError(APIException):
     msg = _("Provider '%(prov)s' does not support a requested option: "
             "%(user_msg)s")
     code = 501
+
+
+class InputFileError(OctaviaException):
+    message = _('Error with file %(file_name)s. Reason: %(reason)s')
+
+
+class ObjectInUse(APIException):
+    msg = _("%(object)s %(id)s is in use and cannot be modified.")
+    code = 409
+
+
+class ProviderFlavorMismatchError(APIException):
+    msg = _("Flavor '%(flav)s' is not compatible with provider '%(prov)s'")
+    code = 400

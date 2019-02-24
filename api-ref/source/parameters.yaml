@@ -7,6 +7,18 @@ path-amphora-id:
   in: path
   required: true
   type: uuid
+path-flavor-id:
+  description: |
+    The ID of the flavor to query.
+  in: path
+  required: true
+  type: uuid
+path-flavorprofile-id:
+  description: |
+    The ID of the flavor profile to query.
+  in: path
+  required: true
+  type: uuid
 path-healthmonitor-id:
   description: |
     The ID of the health monitor to query.
@@ -52,6 +64,12 @@ path-pool-id:
 path-project-id:
   description: |
     The ID of the project to query.
+  in: path
+  required: true
+  type: string
+path-provider:
+  description: |
+    The provider to query.
   in: path
   required: true
   type: string
@@ -143,6 +161,13 @@ amphora-role:
   in: body
   required: true
   type: string
+amphora-stats:
+  description: |
+    A list of amphora statistics objects, one per listener.
+  in: body
+  min_version: 2.3
+  required: true
+  type: array
 amphora-status:
   description: |
     The status of the amphora. One of: ``BOOTING``, ``ALLOCATED``, ``READY``,
@@ -221,6 +246,13 @@ cert-expiration:
   in: body
   required: true
   type: string
+compute-flavor:
+  description: |
+    The ID of the compute flavor used for the amphora.
+  in: body
+  min_version: 2.3
+  required: true
+  type: string
 compute-id:
   description: |
     The ID of the amphora resource in the compute system.
@@ -291,18 +323,90 @@ description-optional:
   in: body
   required: false
   type: string
+enabled:
+  description: |
+    If the resource is available for use.
+  in: body
+  required: true
+  type: boolean
+enabled-optional:
+  description: |
+    If the resource is available for use. The default is True.
+  in: body
+  required: false
+  type: boolean
+flavor:
+  description: |
+    A flavor object.
+  in: body
+  required: true
+  type: object
+flavor-capabilities:
+  description: |
+    The provider flavor capabilities dictonary object.
+  in: body
+  required: true
+  type: object
+flavor-capability-description:
+  description: |
+    The provider flavor capability description.
+  in: body
+  required: true
+  type: string
+flavor-capability-name:
+  description: |
+    The provider flavor capability name.
+  in: body
+  required: true
+  type: string
+flavor-data:
+  description: |
+    The JSON string containing the flavor metadata.
+  in: body
+  required: true
+  type: string
+flavor-data-optional:
+  description: |
+    The JSON string containing the flavor metadata.
+  in: body
+  required: false
+  type: string
 flavor-id:
   description: |
     The ID of the flavor.
   in: body
   required: true
-  type: string
+  type: uuid
 flavor-id-optional:
   description: |
     The ID of the flavor.
   in: body
   required: false
-  type: string
+  type: uuid
+flavor-profile-id:
+  description: |
+    The ID of the flavor profile.
+  in: body
+  required: true
+  type: uuid
+flavorprofile:
+  description: |
+    A ``flavorprofile`` object.
+  in: body
+  required: true
+  type: object
+flavorprofiles:
+  description: |
+    A list of ``flavorprofile`` objects.
+  in: body
+  required: true
+  type: array
+flavors:
+  description: |
+    A list of ``flavor`` objects.
+  in: body
+  required: true
+  type: array
 healthmonitor-delay:
   description: |
     The time, in seconds, between sending probes to members.
@@ -897,6 +1001,12 @@ provider-name:
   in: body
   required: true
   type: string
+provider-name-optional:
+  description: |
+    Provider name.
+  in: body
+  required: false
+  type: string
 provider-optional:
   description: |
     Provider name for the load balancer. Default is ``octavia``.
@@ -1082,6 +1192,20 @@ subnet_id-optional:
   in: body
   required: false
   type: uuid
+tags:
+  description: |
+    A list of simple strings assigned to the resource.
+  in: body
+  min_version: 2.5
+  required: true
+  type: list
+tags-optional:
+  description: |
+    A list of simple strings assigned to the resource.
+  in: body
+  min_version: 2.5
+  required: false
+  type: list
 timeout_client_data:
   description: |
     Frontend client inactivity timeout in milliseconds. Default: 50000.

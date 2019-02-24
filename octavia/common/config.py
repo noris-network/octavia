@@ -17,6 +17,7 @@
 Routines for configuring Octavia
 """
 
+import os
 import sys
 
 from keystoneauth1 import loading as ks_loading
@@ -153,7 +154,7 @@ healthmanager_opts = [
               help=_('IP address the controller will listen on for '
                      'heart beats')),
     cfg.PortOpt('bind_port', default=5555,
-                help=_('Port number the controller will listen on'
+                help=_('Port number the controller will listen on '
                        'for heart beats')),
     cfg.IntOpt('failover_threads',
                default=10,
@@ -173,7 +174,8 @@ healthmanager_opts = [
                default=None,
                help=_('Number of processes for amphora stats update.')),
     cfg.StrOpt('heartbeat_key',
-               help=_('key used to validate amphora sending'
+               mutable=True,
+               help=_('key used to validate amphora sending '
                       'the message'), secret=True),
     cfg.IntOpt('heartbeat_timeout',
                default=60,
@@ -190,9 +192,11 @@ healthmanager_opts = [
                 help=_('List of controller ip and port pairs for the '
                        'heartbeat receivers. Example 127.0.0.1:5555, '
                        '192.168.0.1:5555'),
+                mutable=True,
                 default=[]),
     cfg.IntOpt('heartbeat_interval',
                default=10,
+               mutable=True,
                help=_('Sleep time between sending heartbeats.')),
 
     # Used for updating health and stats
@@ -218,8 +222,8 @@ oslo_messaging_opts = [
                default='neutron_lbaas_event',
                help=_('topic name for communicating events through a queue')),
     cfg.StrOpt('event_stream_transport_url', default=None,
-               help=_('Transport URL to use for the neutron-lbaas'
-                      'synchronization event stream when neutron and octavia'
+               help=_('Transport URL to use for the neutron-lbaas '
+                      'synchronization event stream when neutron and octavia '
                       'have separate queues.')),
 ]
 
@@ -234,7 +238,7 @@ haproxy_amphora_opts = [
     cfg.BoolOpt('connection_logging', default=True,
                 help=_('Set this to False to disable connection logging.')),
     cfg.IntOpt('connection_max_retries',
-               default=300,
+               default=120,
                help=_('Retry threshold for connecting to amphorae.')),
     cfg.IntOpt('connection_retry_interval',
                default=5,
@@ -249,10 +253,10 @@ haproxy_amphora_opts = [
                       'seconds for active amphora.')),
     cfg.IntOpt('build_rate_limit',
                default=-1,
-               help=_('Number of amphorae that could be built per controller'
+               help=_('Number of amphorae that could be built per controller '
                       'worker, simultaneously.')),
     cfg.IntOpt('build_active_retries',
-               default=300,
+               default=120,
                help=_('Retry threshold for waiting for a build slot for '
                       'an amphorae.')),
     cfg.IntOpt('build_retry_interval',
@@ -339,7 +343,8 @@ controller_worker_opts = [
                       'owner ID.  This is a recommended security setting.')),
     cfg.StrOpt('amp_ssh_key_name',
                default='',
-               help=_('SSH key name used to boot the Amphora')),
+               help=_('Optional SSH keypair name, in nova, that will be used '
+                      'for the authorized_keys inside the amphora.')),
     cfg.BoolOpt('amp_ssh_access_allowed',
                 default=True,
                 deprecated_for_removal=True,
@@ -375,6 +380,7 @@ controller_worker_opts = [
     cfg.StrOpt('loadbalancer_topology',
                default=constants.TOPOLOGY_SINGLE,
                choices=constants.SUPPORTED_LB_TOPOLOGIES,
+               mutable=True,
                help=_('Load balancer topology configuration. '
                       'SINGLE - One amphora per load balancer. '
                       'ACTIVE_STANDBY - Two amphora per load balancer.')),
@@ -412,7 +418,7 @@ certificate_opts = [
                default='barbican_acl_auth',
                help='Name of the Barbican authentication method to use'),
     cfg.StrOpt('service_name',
-               help=_('The name of the certificate service in the keystone'
+               help=_('The name of the certificate service in the keystone '
                       'catalog')),
     cfg.StrOpt('endpoint', help=_('A new endpoint to override the endpoint '
                                   'in the keystone catalog.')),
@@ -579,6 +585,20 @@ quota_opts = [
                help=_('Default per project health monitor quota.')),
 ]
 
+audit_opts = [
+    cfg.BoolOpt('enabled', default=False,
+                help=_('Enable auditing of API requests')),
+    cfg.StrOpt('audit_map_file',
+               default='/etc/octavia/octavia_api_audit_map.conf',
+               help=_('Path to audit map file for octavia-api service. '
+                      'Used only when API audit is enabled.')),
+    cfg.StrOpt('ignore_req_list', default='',
+               help=_('Comma separated list of REST API HTTP methods to be '
+                      'ignored during audit. For example: auditing will not '
+                      'be done on any GET or POST requests if this is set to '
+                      '"GET,POST". It is used only when API audit is '
+                      'enabled.')),
+]
 
 # Register the configuration options
 cfg.CONF.register_opts(core_opts)
@@ -599,7 +619,7 @@ cfg.CONF.register_opts(nova_opts, group='nova')
 cfg.CONF.register_opts(glance_opts, group='glance')
 cfg.CONF.register_opts(neutron_opts, group='neutron')
 cfg.CONF.register_opts(quota_opts, group='quotas')
-
+cfg.CONF.register_opts(audit_opts, group='audit')
 
 # Ensure that the control exchange is set correctly
 messaging.set_transport_defaults(control_exchange='octavia')
@@ -620,6 +640,7 @@ def init(args, **kwargs):
              version='%%prog %s' % version.version_info.release_string(),
              **kwargs)
     handle_deprecation_compatibility()
+    setup_remote_pydev_debug()
 
 
 def setup_logging(conf):
@@ -649,3 +670,34 @@ def handle_deprecation_compatibility():
         cfg.CONF.set_default('stats_update_threads',
                              cfg.CONF.health_manager.status_update_threads,
                              group='health_manager')
+
+
+def setup_remote_pydev_debug():
+    """Required setup for remote debugging."""
+
+    pydev_debug_host = os.environ.get('PYDEV_DEBUG_HOST')
+    pydev_debug_port = os.environ.get('PYDEV_DEBUG_PORT')
+
+    if not pydev_debug_host or not pydev_debug_port:
+        return
+
+    try:
+        try:
+            from pydev import pydevd
+        except ImportError:
+            import pydevd
+
+        LOG.warning("Connecting to remote debugger. Once connected, resume "
+                    "the program on the debugger to continue with the "
+                    "initialization of the service.")
+        pydevd.settrace(pydev_debug_host,
+                        port=int(pydev_debug_port),
+                        stdoutToServer=True,
+                        stderrToServer=True)
+    except Exception:
+        LOG.exception('Unable to join debugger, please make sure that the '
+                      'debugger processes is listening on debug-host '
+                      '\'%(debug-host)s\' debug-port \'%(debug-port)s\'.',
+                      {'debug-host': pydev_debug_host,
+                       'debug-port': pydev_debug_port})
+        raise

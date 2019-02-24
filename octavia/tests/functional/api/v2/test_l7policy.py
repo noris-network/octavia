@@ -51,7 +51,8 @@ class TestL7Policy(base.BaseAPITest):
     def test_get(self):
         api_l7policy = self.create_l7policy(
             self.listener_id,
-            constants.L7POLICY_ACTION_REJECT).get(self.root_tag)
+            constants.L7POLICY_ACTION_REJECT,
+            tags=['test_tag']).get(self.root_tag)
         response = self.get(self.L7POLICY_PATH.format(
             l7policy_id=api_l7policy.get('id'))).json.get(self.root_tag)
         self.assertEqual(api_l7policy, response)
@@ -120,12 +121,14 @@ class TestL7Policy(base.BaseAPITest):
     def test_get_all(self):
         api_l7policy = self.create_l7policy(self.listener_id,
                                             constants.L7POLICY_ACTION_REJECT,
+                                            tags=['test_tag']
                                             ).get(self.root_tag)
         self.set_lb_status(self.lb_id)
         policies = self.get(self.L7POLICIES_PATH).json.get(self.root_tag_list)
         self.assertIsInstance(policies, list)
         self.assertEqual(1, len(policies))
         self.assertEqual(api_l7policy.get('id'), policies[0].get('id'))
+        self.assertEqual(api_l7policy['tags'], policies[0]['tags'])
 
     def test_get_all_admin(self):
         project_id = uuidutils.generate_uuid()
@@ -498,6 +501,92 @@ class TestL7Policy(base.BaseAPITest):
         self.assertEqual(policy1['id'],
                          l7pos['l7policies'][0]['id'])
 
+    def test_get_all_tags_filter(self):
+        policy1 = self.create_l7policy(
+            self.listener_id, constants.L7POLICY_ACTION_REJECT,
+            tags=['test_tag1', 'test_tag2']).get(self.root_tag)
+        self.set_lb_status(self.lb_id)
+        policy2 = self.create_l7policy(
+            self.listener_id, constants.L7POLICY_ACTION_REDIRECT_TO_POOL,
+            position=2, redirect_pool_id=self.pool_id,
+            tags=['test_tag2', 'test_tag3']).get(self.root_tag)
+        self.set_lb_status(self.lb_id)
+        policy3 = self.create_l7policy(
+            self.listener_id, constants.L7POLICY_ACTION_REDIRECT_TO_URL,
+            redirect_url='http://localhost/',
+            tags=['test_tag4', 'test_tag5']).get(self.root_tag)
+        self.set_lb_status(self.lb_id)
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(2, len(policies))
+        self.assertEqual(
+            [policy1.get('id'), policy2.get('id')],
+            [policy.get('id') for policy in policies]
+        )
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'tags': ['test_tag2', 'test_tag3']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(1, len(policies))
+        self.assertEqual(
+            [policy2.get('id')],
+            [policy.get('id') for policy in policies]
+        )
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'tags-any': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(2, len(policies))
+        self.assertEqual(
+            [policy1.get('id'), policy2.get('id')],
+            [policy.get('id') for policy in policies]
+        )
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'not-tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(1, len(policies))
+        self.assertEqual(
+            [policy3.get('id')],
+            [policy.get('id') for policy in policies]
+        )
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'not-tags-any': ['test_tag2', 'test_tag4']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(0, len(policies))
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'tags': 'test_tag2',
+                    'tags-any': ['test_tag1', 'test_tag3']}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(2, len(policies))
+        self.assertEqual(
+            [policy1.get('id'), policy2.get('id')],
+            [policy.get('id') for policy in policies]
+        )
+
+        policies = self.get(
+            self.L7POLICIES_PATH,
+            params={'tags': 'test_tag2', 'not-tags': 'test_tag2'}
+        ).json.get(self.root_tag_list)
+        self.assertIsInstance(policies, list)
+        self.assertEqual(0, len(policies))
+
     def test_empty_get_all(self):
         response = self.get(self.L7POLICIES_PATH).json.get(self.root_tag_list)
         self.assertIsInstance(response, list)
@@ -669,16 +758,19 @@ class TestL7Policy(base.BaseAPITest):
     def test_update(self):
         api_l7policy = self.create_l7policy(self.listener_id,
                                             constants.L7POLICY_ACTION_REJECT,
+                                            tags=['old_tag']
                                             ).get(self.root_tag)
         self.set_lb_status(self.lb_id)
         new_l7policy = {
             'action': constants.L7POLICY_ACTION_REDIRECT_TO_URL,
-            'redirect_url': 'http://www.example.com'}
+            'redirect_url': 'http://www.example.com',
+            'tags': ['new_tag']}
         response = self.put(self.L7POLICY_PATH.format(
             l7policy_id=api_l7policy.get('id')),
             self._build_body(new_l7policy)).json.get(self.root_tag)
         self.assertEqual(constants.L7POLICY_ACTION_REDIRECT_TO_URL,
                          response.get('action'))
+        self.assertEqual(['new_tag'], response['tags'])
         self.assert_correct_status(
             lb_id=self.lb_id, listener_id=self.listener_id,
             l7policy_id=api_l7policy.get('id'),

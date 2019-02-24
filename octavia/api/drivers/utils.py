@@ -86,6 +86,12 @@ def _base_to_provider_dict(current_dict, include_project_id=False):
         del new_dict['project_id']
     if 'tenant_id' in new_dict:
         del new_dict['tenant_id']
+    if 'tags' in new_dict:
+        del new_dict['tags']
+    if 'flavor_id' in new_dict:
+        del new_dict['flavor_id']
+    if 'topology' in new_dict:
+        del new_dict['topology']
     return new_dict
 
 
@@ -113,11 +119,13 @@ def lb_dict_to_provider_dict(lb_dict, vip=None,
 def db_loadbalancer_to_provider_loadbalancer(db_loadbalancer):
     new_loadbalancer_dict = lb_dict_to_provider_dict(
         db_loadbalancer.to_dict(recurse=True),
+        vip=db_loadbalancer.vip,
         db_pools=db_loadbalancer.pools,
         db_listeners=db_loadbalancer.listeners)
     for unsupported_field in ['server_group_id', 'amphorae',
                               'vrrp_group', 'topology', 'vip']:
-        del new_loadbalancer_dict[unsupported_field]
+        if unsupported_field in new_loadbalancer_dict:
+            del new_loadbalancer_dict[unsupported_field]
     provider_loadbalancer = driver_dm.LoadBalancer.from_dict(
         new_loadbalancer_dict)
     return provider_loadbalancer

@@ -24,7 +24,8 @@ from wsmeext import pecan as wsme_pecan
 from octavia.api.v2.controllers import base
 from octavia.api.v2.types import amphora as amp_types
 from octavia.common import constants
-
+from octavia.common import exceptions
+from octavia.common import rpc
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -82,8 +83,12 @@ class AmphoraController(base.BaseController):
         if amphora_id and remainder:
             controller = remainder[0]
             remainder = remainder[1:]
+            if controller == 'config':
+                return AmphoraUpdateController(amp_id=amphora_id), remainder
             if controller == 'failover':
                 return FailoverController(amp_id=amphora_id), remainder
+            if controller == 'stats':
+                return AmphoraStatsController(amp_id=amphora_id), remainder
         return None
 
 
@@ -93,11 +98,10 @@ class FailoverController(base.BaseController):
     def __init__(self, amp_id):
         super(FailoverController, self).__init__()
         topic = cfg.CONF.oslo_messaging.topic
-        self.transport = messaging.get_rpc_transport(cfg.CONF)
         self.target = messaging.Target(
             namespace=constants.RPC_NAMESPACE_CONTROLLER_AGENT,
             topic=topic, version="1.0", fanout=False)
-        self.client = messaging.RPCClient(self.transport, target=self.target)
+        self.client = rpc.get_client(self.target)
         self.amp_id = amp_id
 
     @wsme_pecan.wsexpose(None, wtypes.text, status_code=202)
@@ -131,3 +135,71 @@ class FailoverController(base.BaseController):
                 self.repositories.load_balancer.update(
                     context.session, db_amp.load_balancer.id,
                     provisioning_status=constants.ERROR)
+
+
+class AmphoraUpdateController(base.BaseController):
+    RBAC_TYPE = constants.RBAC_AMPHORA
+
+    def __init__(self, amp_id):
+        super(AmphoraUpdateController, self).__init__()
+        topic = cfg.CONF.oslo_messaging.topic
+        self.transport = messaging.get_rpc_transport(cfg.CONF)
+        self.target = messaging.Target(
+            namespace=constants.RPC_NAMESPACE_CONTROLLER_AGENT,
+            topic=topic, version="1.0", fanout=False)
+        self.client = messaging.RPCClient(self.transport, target=self.target)
+        self.amp_id = amp_id
+
+    @wsme_pecan.wsexpose(None, wtypes.text, status_code=202)
+    def put(self):
+        """Update amphora agent configuration"""
+        pcontext = pecan.request.context
+        context = pcontext.get('octavia_context')
+        db_amp = self._get_db_amp(context.session, self.amp_id,
+                                  show_deleted=False)
+
+        # Check to see if the amphora is a spare (not associated with an LB)
+        if db_amp.load_balancer:
+            self._auth_validate_action(
+                context, db_amp.load_balancer.project_id,
+                constants.RBAC_PUT_CONFIG)
+        else:
+            self._auth_validate_action(
+                context, context.project_id, constants.RBAC_PUT_CONFIG)
+
+        try:
+            LOG.info("Sending amphora agent update request for amphora %s to "
+                     "the queue.", self.amp_id)
+            payload = {constants.AMPHORA_ID: db_amp.id}
+            self.client.cast({}, 'update_amphora_agent_config', **payload)
+        except Exception:
+            with excutils.save_and_reraise_exception(reraise=True):
+                LOG.error("Unable to send amphora agent update request for "
+                          "amphora %s to the queue.", self.amp_id)
+
+
+class AmphoraStatsController(base.BaseController):
+    RBAC_TYPE = constants.RBAC_AMPHORA
+
+    def __init__(self, amp_id):
+        super(AmphoraStatsController, self).__init__()
+        self.amp_id = amp_id
+
+    @wsme_pecan.wsexpose(amp_types.StatisticsRootResponse, wtypes.text,
+                         status_code=200)
+    def get(self):
+        context = pecan.request.context.get('octavia_context')
+
+        self._auth_validate_action(context, context.project_id,
+                                   constants.RBAC_GET_STATS)
+
+        stats = self.repositories.get_amphora_stats(context.session,
+                                                    self.amp_id)
+        if stats == []:
+            raise exceptions.NotFound(resource='Amphora stats for',
+                                      id=self.amp_id)
+
+        wsme_stats = []
+        for stat in stats:
+            wsme_stats.append(amp_types.AmphoraStatisticsResponse(**stat))
+        return amp_types.StatisticsRootResponse(amphora_stats=wsme_stats)

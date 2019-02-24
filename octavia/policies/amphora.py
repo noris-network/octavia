@@ -32,11 +32,26 @@ rules = [
     ),
     policy.DocumentedRuleDefault(
         '{rbac_obj}{action}'.format(rbac_obj=constants.RBAC_AMPHORA,
+                                    action=constants.RBAC_PUT_CONFIG),
+        constants.RULE_API_ADMIN,
+        "Update Amphora Agent Configuration",
+        [{'method': 'PUT',
+          'path': '/v2/octavia/amphorae/{amphora_id}/config'}]
+    ),
+    policy.DocumentedRuleDefault(
+        '{rbac_obj}{action}'.format(rbac_obj=constants.RBAC_AMPHORA,
                                     action=constants.RBAC_PUT_FAILOVER),
         constants.RULE_API_ADMIN,
         "Failover Amphora",
         [{'method': 'PUT',
           'path': '/v2/octavia/amphorae/{amphora_id}/failover'}]
+    ),
+    policy.DocumentedRuleDefault(
+        '{rbac_obj}{action}'.format(rbac_obj=constants.RBAC_AMPHORA,
+                                    action=constants.RBAC_GET_STATS),
+        constants.RULE_API_ADMIN,
+        "Show Amphora statistics",
+        [{'method': 'GET', 'path': '/v2/octavia/amphorae/{amphora_id}/stats'}]
     ),
 ]
 

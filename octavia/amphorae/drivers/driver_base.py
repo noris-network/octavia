@@ -73,7 +73,7 @@ class AmphoraLoadBalancerDriver(object):
         pass
 
     @abc.abstractmethod
-    def start(self, listener, vip):
+    def start(self, listener, vip, amphora):
         """Start the listener on the vip.
 
         :param listener: listener object,
@@ -81,6 +81,8 @@ class AmphoraLoadBalancerDriver(object):
         :type listener: object
         :param vip: vip object, need to use its ip_address property
         :type vip: object
+        :param amphora: Amphora to start. If None, start on all amphora
+        :type amphora: object
         :returns: return a value list (listener, vip, status flag--enable)
 
         At this moment, we just build the basic structure for testing, will
@@ -214,6 +216,16 @@ class AmphoraLoadBalancerDriver(object):
         :type pem_file: file object
 
         Upload cert file to amphora for Controller Communication.
+        """
+        pass
+
+    def update_agent_config(self, amphora, agent_config):
+        """Upload and update the amphora agent configuration.
+
+        :param amphora: amphora object, needs id and network ip(s)
+        :type amphora: object
+        :param agent_config: The new amphora agent configuration file.
+        :type agent_config: string
         """
         pass
 

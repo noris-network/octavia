@@ -69,6 +69,7 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
         self._pool_repo = repo.PoolRepository()
         self._l7policy_repo = repo.L7PolicyRepository()
         self._l7rule_repo = repo.L7RuleRepository()
+        self._flavor_repo = repo.FlavorRepository()
 
         self._exclude_result_logging_tasks = (
             constants.ROLE_STANDALONE + '-' +
@@ -80,7 +81,12 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
             constants.ROLE_MASTER + '-' +
             constants.CREATE_AMP_FOR_LB_SUBFLOW + '-' +
             constants.GENERATE_SERVER_PEM,
-            constants.GENERATE_SERVER_PEM_TASK)
+            constants.GENERATE_SERVER_PEM_TASK,
+            constants.FAILOVER_AMPHORA_FLOW + '-' +
+            constants.CREATE_AMP_FOR_LB_SUBFLOW + '-' +
+            constants.GENERATE_SERVER_PEM,
+            constants.CREATE_AMP_FOR_LB_SUBFLOW + '-' +
+            constants.UPDATE_CERT_EXPIRATION)
 
         super(ControllerWorker, self).__init__()
 
@@ -102,18 +108,22 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
 
         :returns: amphora_id
         """
-        create_amp_tf = self._taskflow_load(
-            self._amphora_flows.get_create_amphora_flow(),
-            store={constants.BUILD_TYPE_PRIORITY:
-                   constants.LB_CREATE_SPARES_POOL_PRIORITY}
-        )
-        with tf_logging.DynamicLoggingListener(
-                create_amp_tf, log=LOG,
-                hide_inputs_outputs_of=self._exclude_result_logging_tasks):
+        try:
+            create_amp_tf = self._taskflow_load(
+                self._amphora_flows.get_create_amphora_flow(),
+                store={constants.BUILD_TYPE_PRIORITY:
+                       constants.LB_CREATE_SPARES_POOL_PRIORITY,
+                       constants.FLAVOR: None}
+            )
+            with tf_logging.DynamicLoggingListener(
+                    create_amp_tf, log=LOG,
+                    hide_inputs_outputs_of=self._exclude_result_logging_tasks):
 
-            create_amp_tf.run()
+                create_amp_tf.run()
 
-        return create_amp_tf.storage.fetch('amphora')
+            return create_amp_tf.storage.fetch('amphora')
+        except Exception as e:
+            LOG.error('Failed to create an amphora due to: {}'.format(str(e)))
 
     def delete_amphora(self, amphora_id):
         """Deletes an existing Amphora.
@@ -315,7 +325,7 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
         wait=tenacity.wait_incrementing(
             RETRY_INITIAL_DELAY, RETRY_BACKOFF, RETRY_MAX),
         stop=tenacity.stop_after_attempt(RETRY_ATTEMPTS))
-    def create_load_balancer(self, load_balancer_id):
+    def create_load_balancer(self, load_balancer_id, flavor=None):
         """Creates a load balancer by allocating Amphorae.
 
         First tries to allocate an existing Amphora in READY state.
@@ -332,14 +342,17 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
                         '60 seconds.', 'load_balancer', load_balancer_id)
             raise db_exceptions.NoResultFound
 
+        # TODO(johnsom) convert this to octavia_lib constant flavor
+        # once octavia is transitioned to use octavia_lib
         store = {constants.LOADBALANCER_ID: load_balancer_id,
                  constants.BUILD_TYPE_PRIORITY:
-                 constants.LB_CREATE_NORMAL_PRIORITY}
+                 constants.LB_CREATE_NORMAL_PRIORITY,
+                 constants.FLAVOR: flavor}
 
-        topology = CONF.controller_worker.loadbalancer_topology
+        topology = lb.topology
 
         store[constants.UPDATE_DICT] = {
-            constants.LOADBALANCER_TOPOLOGY: topology
+            constants.TOPOLOGY: topology
         }
 
         create_lb_flow = self._lb_flows.get_create_load_balancer_flow(
@@ -832,6 +845,12 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
             db_apis.get_session(), amp.id)
         if CONF.nova.enable_anti_affinity and lb:
             stored_params[constants.SERVER_GROUP_ID] = lb.server_group_id
+        if lb.flavor_id:
+            stored_params[constants.FLAVOR] = (
+                self._flavor_repo.get_flavor_metadata_dict(
+                    db_apis.get_session(), lb.flavor_id))
+        else:
+            stored_params[constants.FLAVOR] = {}
 
         failover_amphora_tf = self._taskflow_load(
             self._amphora_flows.get_failover_flow(
@@ -939,3 +958,32 @@ class ControllerWorker(base_taskflow.BaseTaskFlowEngine):
         with tf_logging.DynamicLoggingListener(certrotation_amphora_tf,
                                                log=LOG):
             certrotation_amphora_tf.run()
+
+    def update_amphora_agent_config(self, amphora_id):
+        """Update the amphora agent configuration.
+
+        Note: This will update the amphora agent configuration file and
+              update the running configuration for mutatable configuration
+              items.
+
+        :param amphora_id: ID of the amphora to update.
+        :returns: None
+        """
+        LOG.info("Start amphora agent configuration update, amphora's id "
+                 "is: %s", amphora_id)
+        amp = self._amphora_repo.get(db_apis.get_session(), id=amphora_id)
+        lb = self._amphora_repo.get_lb_for_amphora(db_apis.get_session(),
+                                                   amphora_id)
+        flavor = {}
+        if lb.flavor_id:
+            flavor = self._flavor_repo.get_flavor_metadata_dict(
+                db_apis.get_session(), lb.flavor_id)
+
+        update_amphora_tf = self._taskflow_load(
+            self._amphora_flows.update_amphora_config_flow(),
+            store={constants.AMPHORA: amp,
+                   constants.FLAVOR: flavor})
+
+        with tf_logging.DynamicLoggingListener(update_amphora_tf,
+                                               log=LOG):
+            update_amphora_tf.run()
