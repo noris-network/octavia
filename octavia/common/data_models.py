@@ -263,7 +263,9 @@ class Pool(BaseDataModel):
                  session_persistence=None, load_balancer_id=None,
                  load_balancer=None, listeners=None, l7policies=None,
                  created_at=None, updated_at=None, provisioning_status=None,
-                 tags=None):
+                 tags=None, tls_certificate_id=None,
+                 ca_tls_certificate_id=None, crl_container_id=None,
+                 tls_enabled=None):
         self.id = id
         self.project_id = project_id
         self.name = name
@@ -283,6 +285,10 @@ class Pool(BaseDataModel):
         self.updated_at = updated_at
         self.provisioning_status = provisioning_status
         self.tags = tags
+        self.tls_certificate_id = tls_certificate_id
+        self.ca_tls_certificate_id = ca_tls_certificate_id
+        self.crl_container_id = crl_container_id
+        self.tls_enabled = tls_enabled
 
     def update(self, update_dict):
         for key, value in update_dict.items():
@@ -368,7 +374,8 @@ class Listener(BaseDataModel):
                  created_at=None, updated_at=None,
                  timeout_client_data=None, timeout_member_connect=None,
                  timeout_member_data=None, timeout_tcp_inspect=None,
-                 tags=None):
+                 tags=None, client_ca_tls_certificate_id=None,
+                 client_authentication=None, client_crl_container_id=None):
         self.id = id
         self.project_id = project_id
         self.name = name
@@ -397,6 +404,9 @@ class Listener(BaseDataModel):
         self.timeout_member_data = timeout_member_data
         self.timeout_tcp_inspect = timeout_tcp_inspect
         self.tags = tags
+        self.client_ca_tls_certificate_id = client_ca_tls_certificate_id
+        self.client_authentication = client_authentication
+        self.client_crl_container_id = client_crl_container_id
 
     def update(self, update_dict):
         for key, value in update_dict.items():

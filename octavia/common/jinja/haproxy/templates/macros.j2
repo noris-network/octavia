@@ -38,8 +38,18 @@ peers {{ "%s_peers"|format(listener.id.replace("-", ""))|trim() }}
     {% else %}
         {% set crt_dir_opt = "" %}
     {% endif %}
+    {% if listener.client_ca_tls_path and listener.client_auth %}
+        {% set client_ca_opt = "ca-file %s verify %s"|format(listener.client_ca_tls_path, listener.client_auth)|trim() %}
+    {% else %}
+        {% set client_ca_opt = "" %}
+    {% endif %}
+    {% if listener.client_crl_path and listener.client_ca_tls_path %}
+        {% set ca_crl_opt = "crl-file %s"|format(listener.client_crl_path)|trim() %}
+    {% else %}
+        {% set ca_crl_opt = "" %}
+    {% endif %}
 bind {{ lb_vip_address }}:{{ listener.protocol_port }} {{
-"%s %s"|format(def_crt_opt, crt_dir_opt)|trim() }}
+"%s %s %s %s"|format(def_crt_opt, crt_dir_opt, client_ca_opt, ca_crl_opt)|trim() }}
 {% endmacro %}
 
 
@@ -74,6 +84,14 @@ bind {{ lb_vip_address }}:{{ listener.protocol_port }} {{
             constants, l7rule.compare_type) }} {{ l7rule.value }}
     {% elif l7rule.type == constants.L7RULE_TYPE_COOKIE %}
         acl {{ l7rule.id }} req.cook({{ l7rule.key }}) {{
+            l7rule_compare_type_macro(
+            constants, l7rule.compare_type) }} {{ l7rule.value }}
+    {% elif l7rule.type == constants.L7RULE_TYPE_SSL_CONN_HAS_CERT %}
+        acl {{ l7rule.id }} ssl_c_used
+    {% elif l7rule.type == constants.L7RULE_TYPE_SSL_VERIFY_RESULT %}
+        acl {{ l7rule.id }} ssl_c_verify eq {{ l7rule.value }}
+    {% elif l7rule.type == constants.L7RULE_TYPE_SSL_DN_FIELD %}
+        acl {{ l7rule.id }} ssl_c_s_dn({{ l7rule.key }}) {{
             l7rule_compare_type_macro(
             constants, l7rule.compare_type) }} {{ l7rule.value }}
     {% endif %}
@@ -192,10 +210,34 @@ frontend {{ listener.id }}
     {% else %}
         {% set member_enabled_opt = " disabled" %}
     {% endif %}
-    {{ "server %s %s:%d weight %s%s%s%s%s%s"|e|format(
+    {% if pool.tls_enabled %}
+        {% set def_opt_prefix = " ssl" %}
+        {% set def_sni_opt = " sni ssl_fc_sni" %}
+    {% else %}
+        {% set def_opt_prefix = "" %}
+        {% set def_sni_opt = "" %}
+    {% endif %}
+    {% if pool.client_cert and pool.tls_enabled %}
+        {% set def_crt_opt = " crt %s"|format(pool.client_cert) %}
+    {% else %}
+        {% set def_crt_opt = "" %}
+    {% endif %}
+    {% if pool.ca_cert and pool.tls_enabled %}
+        {% set ca_opt = " ca-file %s"|format(pool.ca_cert) %}
+        {% set def_verify_opt = " verify required" %}
+        {% if pool.crl %}
+            {% set crl_opt = " crl-file %s"|format(pool.crl) %}
+        {% else %}
+            {% set def_verify_opt = "" %}
+        {% endif %}
+    {% elif pool.tls_enabled %}
+        {% set def_verify_opt = " verify none" %}
+    {% endif %}
+    {{ "server %s %s:%d weight %s%s%s%s%s%s%s%s%s%s%s%s"|e|format(
         member.id, member.address, member.protocol_port, member.weight,
         hm_opt, persistence_opt, proxy_protocol_opt, member_backup_opt,
-        member_enabled_opt)|trim() }}
+        member_enabled_opt, def_opt_prefix, def_crt_opt, ca_opt, crl_opt,
+        def_verify_opt, def_sni_opt)|trim() }}
 {% endmacro %}
 
 
@@ -274,6 +316,40 @@ backend {{ pool.id }}
         {% elif listener.protocol.lower() ==
                                constants.PROTOCOL_TERMINATED_HTTPS.lower() %}
     http-request set-header X-Forwarded-Proto https
+        {% endif %}
+    {% endif %}
+    {% if listener.protocol.lower() == constants.PROTOCOL_TERMINATED_HTTPS.lower() %}
+        {% if listener.insert_headers.get('X-SSL-Client-Verify',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-Verify %[ssl_c_verify]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Client-Has-Cert',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-Has-Cert %[ssl_c_used]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Client-DN',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-DN %{+Q}[ssl_c_s_dn]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Client-CN',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-CN %{+Q}[ssl_c_s_dn(cn)]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Issuer',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Issuer %{+Q}[ssl_c_i_dn]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Client-SHA1',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-SHA1 %{+Q}[ssl_c_sha1,hex]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Client-Not-Before',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-Not-Before %{+Q}[ssl_c_notbefore]
+        {% endif %}
+        {% if listener.insert_headers.get('X-SSL-Client-Not-After',
+                                          'False').lower() == 'true' %}
+    http-request set-header X-SSL-Client-Not-After %{+Q}[ssl_c_notafter]
         {% endif %}
     {% endif %}
     {% if listener.connection_limit is defined %}

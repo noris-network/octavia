@@ -71,3 +71,13 @@ class CastellanCertManager(cert_mgr.CertManager):
         # We don't manage ACL based access for things retrieved via Castellan
         # because we assume we have elevated access to the secret store.
         pass
+
+    def get_secret(self, context, secret_ref):
+        try:
+            certbag = self.manager.get(context, secret_ref)
+            certbag_data = certbag.get_encoded()
+        except Exception as e:
+            LOG.error("Failed to access secret for %s due to: %s.",
+                      secret_ref, str(e))
+            raise exceptions.CertificateRetrievalException(ref=secret_ref)
+        return certbag_data

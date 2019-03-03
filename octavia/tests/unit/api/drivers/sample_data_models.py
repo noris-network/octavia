@@ -37,6 +37,11 @@ class SampleDriverDataModels(object):
         self.default_tls_container_ref = uuidutils.generate_uuid()
         self.sni_container_ref_1 = uuidutils.generate_uuid()
         self.sni_container_ref_2 = uuidutils.generate_uuid()
+        self.client_ca_tls_certificate_ref = uuidutils.generate_uuid()
+        self.client_crl_container_ref = uuidutils.generate_uuid()
+        self.pool_sni_container_ref = uuidutils.generate_uuid()
+        self.pool_ca_container_ref = uuidutils.generate_uuid()
+        self.pool_crl_container_ref = uuidutils.generate_uuid()
 
         self.pool1_id = uuidutils.generate_uuid()
         self.pool2_id = uuidutils.generate_uuid()
@@ -203,7 +208,14 @@ class SampleDriverDataModels(object):
                                 'health_monitor': self.test_hm1_dict,
                                 'session_persistence': {'type': 'SOURCE'},
                                 'listeners': [],
-                                'l7policies': []}
+                                'l7policies': [],
+                                'tls_certificate_id':
+                                    self.pool_sni_container_ref,
+                                'ca_tls_certificate_id':
+                                    self.pool_ca_container_ref,
+                                'crl_container_id':
+                                    self.pool_crl_container_ref,
+                                'tls_enabled': True}
 
         self.test_pool1_dict.update(self._common_test_dict)
 
@@ -212,6 +224,9 @@ class SampleDriverDataModels(object):
         self.test_pool2_dict['name'] = 'pool2'
         self.test_pool2_dict['description'] = 'Pool 2'
         self.test_pool2_dict['members'] = self.test_pool2_members_dict
+        del self.test_pool2_dict['tls_certificate_id']
+        del self.test_pool2_dict['ca_tls_certificate_id']
+        del self.test_pool2_dict['crl_container_id']
 
         self.test_pools = [self.test_pool1_dict, self.test_pool2_dict]
 
@@ -223,6 +238,9 @@ class SampleDriverDataModels(object):
         self.db_pool2.members = self.db_pool2_members
 
         self.test_db_pools = [self.db_pool1, self.db_pool2]
+        pool_cert = data_models.TLSContainer(certificate='pool cert')
+        pool_ca_file_content = 'X509 POOL CA CERT FILE'
+        pool_crl_file_content = 'X509 POOL CRL FILE'
 
         self.provider_pool1_dict = {
             'admin_state_up': True,
@@ -234,7 +252,15 @@ class SampleDriverDataModels(object):
             'name': 'pool1',
             'pool_id': self.pool1_id,
             'protocol': 'avian',
-            'session_persistence': {'type': 'SOURCE'}}
+            'session_persistence': {'type': 'SOURCE'},
+            'tls_container_ref': self.pool_sni_container_ref,
+            'tls_container_data': pool_cert.to_dict(),
+            'ca_tls_container_ref': self.pool_ca_container_ref,
+            'ca_tls_container_data': pool_ca_file_content,
+            'crl_container_ref': self.pool_crl_container_ref,
+            'crl_container_data': pool_crl_file_content,
+            'tls_enabled': True
+        }
 
         self.provider_pool2_dict = copy.deepcopy(self.provider_pool1_dict)
         self.provider_pool2_dict['pool_id'] = self.pool2_id
@@ -242,6 +268,12 @@ class SampleDriverDataModels(object):
         self.provider_pool2_dict['description'] = 'Pool 2'
         self.provider_pool2_dict['members'] = self.provider_pool2_members_dict
         self.provider_pool2_dict['healthmonitor'] = self.provider_hm2_dict
+        self.provider_pool2_dict['tls_container_ref'] = None
+        del self.provider_pool2_dict['tls_container_data']
+        self.provider_pool2_dict['ca_tls_container_ref'] = None
+        del self.provider_pool2_dict['ca_tls_container_data']
+        self.provider_pool2_dict['crl_container_ref'] = None
+        del self.provider_pool2_dict['crl_container_data']
 
         self.provider_pool1 = driver_dm.Pool(**self.provider_pool1_dict)
         self.provider_pool1.members = self.provider_pool1_members
@@ -380,7 +412,11 @@ class SampleDriverDataModels(object):
             'timeout_client_data': 1000,
             'timeout_member_connect': 2000,
             'timeout_member_data': 3000,
-            'timeout_tcp_inspect': 4000}
+            'timeout_tcp_inspect': 4000,
+            'client_ca_tls_certificate_id': self.client_ca_tls_certificate_ref,
+            'client_authentication': constants.CLIENT_AUTH_NONE,
+            'client_crl_container_id': self.client_crl_container_ref
+        }
 
         self.test_listener1_dict.update(self._common_test_dict)
 
@@ -392,6 +428,8 @@ class SampleDriverDataModels(object):
         self.test_listener2_dict['default_pool'] = self.test_pool2_dict
         del self.test_listener2_dict['l7policies']
         del self.test_listener2_dict['sni_containers']
+        del self.test_listener2_dict['client_ca_tls_certificate_id']
+        del self.test_listener2_dict['client_crl_container_id']
 
         self.test_listeners = [self.test_listener1_dict,
                                self.test_listener2_dict]
@@ -410,6 +448,8 @@ class SampleDriverDataModels(object):
         cert1 = data_models.TLSContainer(certificate='cert 1')
         cert2 = data_models.TLSContainer(certificate='cert 2')
         cert3 = data_models.TLSContainer(certificate='cert 3')
+        ca_cert = 'ca cert'
+        crl_file_content = 'X509 CRL FILE'
 
         self.provider_listener1_dict = {
             'admin_state_up': True,
@@ -432,7 +472,13 @@ class SampleDriverDataModels(object):
             'timeout_client_data': 1000,
             'timeout_member_connect': 2000,
             'timeout_member_data': 3000,
-            'timeout_tcp_inspect': 4000}
+            'timeout_tcp_inspect': 4000,
+            'client_ca_tls_container_ref': self.client_ca_tls_certificate_ref,
+            'client_ca_tls_container_data': ca_cert,
+            'client_authentication': constants.CLIENT_AUTH_NONE,
+            'client_crl_container_ref': self.client_crl_container_ref,
+            'client_crl_container_data': crl_file_content
+        }
 
         self.provider_listener2_dict = copy.deepcopy(
             self.provider_listener1_dict)
@@ -442,6 +488,12 @@ class SampleDriverDataModels(object):
         self.provider_listener2_dict['default_pool_id'] = self.pool2_id
         self.provider_listener2_dict['default_pool'] = self.provider_pool2_dict
         del self.provider_listener2_dict['l7policies']
+        self.provider_listener2_dict['client_ca_tls_container_ref'] = None
+        del self.provider_listener2_dict['client_ca_tls_container_data']
+        self.provider_listener2_dict['client_authentication'] = (
+            constants.CLIENT_AUTH_NONE)
+        self.provider_listener2_dict['client_crl_container_ref'] = None
+        del self.provider_listener2_dict['client_crl_container_data']
 
         self.provider_listener1 = driver_dm.Listener(
             **self.provider_listener1_dict)

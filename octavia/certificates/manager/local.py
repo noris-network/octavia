@@ -168,3 +168,32 @@ class LocalCertManager(cert_mgr.CertManager):
     def unset_acls(self, context, cert_ref):
         # There is no security on this store, because it's really dumb
         pass
+
+    @staticmethod
+    def get_secret(context, secret_ref):
+        """Retrieves a secret payload by reference.
+
+        :param context: Ignored in this implementation
+        :param secret_ref: The secret reference ID
+
+        :return: The secret payload
+        :raises CertificateStorageException: if secret retrieval fails
+        """
+        LOG.info("Loading secret %s from the local filesystem.", secret_ref)
+
+        filename_base = os.path.join(CONF.certificates.storage_path,
+                                     secret_ref)
+
+        filename_secret = "{0}.pem".format(filename_base)
+
+        secret_data = None
+
+        flags = os.O_RDONLY
+        try:
+            with os.fdopen(os.open(filename_secret, flags)) as secret_file:
+                secret_data = secret_file.read()
+        except IOError:
+            LOG.error("Failed to read secret for %s.", secret_ref)
+            raise exceptions.CertificateRetrievalException(ref=secret_ref)
+
+        return secret_data
