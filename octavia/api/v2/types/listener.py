@@ -25,8 +25,11 @@ CONF.import_group('haproxy_amphora', 'octavia.common.config')
 
 
 class BaseListenerType(types.BaseType):
-    _type_to_model_map = {'admin_state_up': 'enabled',
-                          'default_tls_container_ref': 'tls_certificate_id'}
+    _type_to_model_map = {
+        'admin_state_up': 'enabled',
+        'default_tls_container_ref': 'tls_certificate_id',
+        'client_ca_tls_container_ref': 'client_ca_tls_certificate_id',
+        'client_crl_container_ref': 'client_crl_container_id'}
     _child_map = {}
 
 
@@ -55,6 +58,9 @@ class ListenerResponse(BaseListenerType):
     timeout_member_data = wtypes.wsattr(wtypes.IntegerType())
     timeout_tcp_inspect = wtypes.wsattr(wtypes.IntegerType())
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType()))
+    client_ca_tls_container_ref = wtypes.StringType()
+    client_authentication = wtypes.wsattr(wtypes.StringType())
+    client_crl_container_ref = wtypes.wsattr(wtypes.StringType())
 
     @classmethod
     def from_data_model(cls, data_model, children=False):
@@ -63,7 +69,6 @@ class ListenerResponse(BaseListenerType):
 
         listener.sni_container_refs = [
             sni_c.tls_container_id for sni_c in data_model.sni_containers]
-
         if cls._full_response():
             del listener.loadbalancers
             l7policy_type = l7policy.L7PolicyFullResponse
@@ -135,6 +140,11 @@ class ListenerPOST(BaseListenerType):
                            maximum=constants.MAX_TIMEOUT),
         default=CONF.haproxy_amphora.timeout_tcp_inspect)
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType(max_length=255)))
+    client_ca_tls_container_ref = wtypes.StringType(max_length=255)
+    client_authentication = wtypes.wsattr(
+        wtypes.Enum(str, *constants.SUPPORTED_CLIENT_AUTH_MODES),
+        default=constants.CLIENT_AUTH_NONE)
+    client_crl_container_ref = wtypes.StringType(max_length=255)
 
 
 class ListenerRootPOST(types.BaseType):
@@ -167,6 +177,10 @@ class ListenerPUT(BaseListenerType):
         wtypes.IntegerType(minimum=constants.MIN_TIMEOUT,
                            maximum=constants.MAX_TIMEOUT))
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType(max_length=255)))
+    client_ca_tls_container_ref = wtypes.StringType(max_length=255)
+    client_authentication = wtypes.wsattr(
+        wtypes.Enum(str, *constants.SUPPORTED_CLIENT_AUTH_MODES))
+    client_crl_container_ref = wtypes.StringType(max_length=255)
 
 
 class ListenerRootPUT(types.BaseType):
@@ -210,6 +224,11 @@ class ListenerSingleCreate(BaseListenerType):
                            maximum=constants.MAX_TIMEOUT),
         default=CONF.haproxy_amphora.timeout_tcp_inspect)
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType(max_length=255)))
+    client_ca_tls_container_ref = wtypes.StringType(max_length=255)
+    client_authentication = wtypes.wsattr(
+        wtypes.Enum(str, *constants.SUPPORTED_CLIENT_AUTH_MODES),
+        default=constants.CLIENT_AUTH_NONE)
+    client_crl_container_ref = wtypes.StringType(max_length=255)
 
 
 class ListenerStatusResponse(BaseListenerType):

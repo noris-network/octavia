@@ -263,7 +263,9 @@ class Pool(BaseDataModel):
                  session_persistence=None, load_balancer_id=None,
                  load_balancer=None, listeners=None, l7policies=None,
                  created_at=None, updated_at=None, provisioning_status=None,
-                 tags=None):
+                 tags=None, tls_certificate_id=None,
+                 ca_tls_certificate_id=None, crl_container_id=None,
+                 tls_enabled=None):
         self.id = id
         self.project_id = project_id
         self.name = name
@@ -283,6 +285,10 @@ class Pool(BaseDataModel):
         self.updated_at = updated_at
         self.provisioning_status = provisioning_status
         self.tags = tags
+        self.tls_certificate_id = tls_certificate_id
+        self.ca_tls_certificate_id = ca_tls_certificate_id
+        self.crl_container_id = crl_container_id
+        self.tls_enabled = tls_enabled
 
     def update(self, update_dict):
         for key, value in update_dict.items():
@@ -368,7 +374,8 @@ class Listener(BaseDataModel):
                  created_at=None, updated_at=None,
                  timeout_client_data=None, timeout_member_connect=None,
                  timeout_member_data=None, timeout_tcp_inspect=None,
-                 tags=None):
+                 tags=None, client_ca_tls_certificate_id=None,
+                 client_authentication=None, client_crl_container_id=None):
         self.id = id
         self.project_id = project_id
         self.name = name
@@ -397,6 +404,9 @@ class Listener(BaseDataModel):
         self.timeout_member_data = timeout_member_data
         self.timeout_tcp_inspect = timeout_tcp_inspect
         self.tags = tags
+        self.client_ca_tls_certificate_id = client_ca_tls_certificate_id
+        self.client_authentication = client_authentication
+        self.client_crl_container_id = client_crl_container_id
 
     def update(self, update_dict):
         for key, value in update_dict.items():
@@ -610,7 +620,8 @@ class L7Policy(BaseDataModel):
                  position=None, listener=None, redirect_pool=None,
                  enabled=None, l7rules=None, provisioning_status=None,
                  operating_status=None, project_id=None, created_at=None,
-                 updated_at=None, redirect_prefix=None, tags=None):
+                 updated_at=None, redirect_prefix=None, tags=None,
+                 redirect_http_code=None):
         self.id = id
         self.name = name
         self.description = description
@@ -630,6 +641,7 @@ class L7Policy(BaseDataModel):
         self.updated_at = updated_at
         self.redirect_prefix = redirect_prefix
         self.tags = tags
+        self.redirect_http_code = redirect_http_code
 
     def _conditionally_remove_pool_links(self, pool):
         """Removes links to the given pool from parent objects.
@@ -656,6 +668,7 @@ class L7Policy(BaseDataModel):
                 self._conditionally_remove_pool_links(self.redirect_pool)
                 self.action = constants.L7POLICY_ACTION_REDIRECT_TO_POOL
                 self.redirect_url = None
+                self.redirect_http_code = None
                 pool = self._find_in_graph('Pool' + value)
                 self.redirect_pool = pool
                 if self.l7rules and (self.enabled is True or (
@@ -675,6 +688,7 @@ class L7Policy(BaseDataModel):
                 self._conditionally_remove_pool_links(self.redirect_pool)
                 self.redirect_pool = None
                 self.redirect_pool_id = None
+                self.redirect_http_code = None
             elif key == 'position':
                 self.listener.l7policies.remove(self)
                 self.listener.l7policies.insert(value - 1, self)

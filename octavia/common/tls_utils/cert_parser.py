@@ -328,29 +328,31 @@ def build_pem(tls_container):
     :param tls_container: Object container TLS certificates
     :returns: Pem encoded certificate file
     """
-    pem = [tls_container.certificate, tls_container.private_key]
+    pem = [tls_container.certificate]
+    if tls_container.private_key:
+        pem.append(tls_container.private_key)
     if tls_container.intermediates:
         pem.extend(tls_container.intermediates[:])
     return b'\n'.join(pem) + b'\n'
 
 
-def load_certificates_data(cert_mngr, listener, context=None):
-    """Load TLS certificate data from the listener.
+def load_certificates_data(cert_mngr, obj, context=None):
+    """Load TLS certificate data from the listener/pool.
 
     return TLS_CERT and SNI_CERTS
     """
     tls_cert = None
     sni_certs = []
     if not context:
-        context = oslo_context.RequestContext(project_id=listener.project_id)
+        context = oslo_context.RequestContext(project_id=obj.project_id)
 
-    if listener.tls_certificate_id:
+    if obj.tls_certificate_id:
         tls_cert = _map_cert_tls_container(
             cert_mngr.get_cert(context,
-                               listener.tls_certificate_id,
+                               obj.tls_certificate_id,
                                check_only=True))
-    if listener.sni_containers:
-        for sni_cont in listener.sni_containers:
+    if hasattr(obj, 'sni_containers') and obj.sni_containers:
+        for sni_cont in obj.sni_containers:
             cert_container = _map_cert_tls_container(
                 cert_mngr.get_cert(context,
                                    sni_cont.tls_container_id,

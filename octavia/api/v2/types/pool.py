@@ -52,7 +52,10 @@ class SessionPersistencePUT(types.BaseType):
 class BasePoolType(types.BaseType):
     _type_to_model_map = {'admin_state_up': 'enabled',
                           'healthmonitor': 'health_monitor',
-                          'healthmonitor_id': 'health_monitor.id'}
+                          'healthmonitor_id': 'health_monitor.id',
+                          'tls_container_ref': 'tls_certificate_id',
+                          'ca_tls_container_ref': 'ca_tls_certificate_id',
+                          'crl_container_ref': 'crl_container_id'}
 
     _child_map = {'health_monitor': {'id': 'healthmonitor_id'}}
 
@@ -76,6 +79,10 @@ class PoolResponse(BasePoolType):
     healthmonitor_id = wtypes.wsattr(wtypes.UuidType())
     members = wtypes.wsattr([types.IdOnlyType])
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType()))
+    tls_container_ref = wtypes.wsattr(wtypes.StringType())
+    ca_tls_container_ref = wtypes.wsattr(wtypes.StringType())
+    crl_container_ref = wtypes.wsattr(wtypes.StringType())
+    tls_enabled = wtypes.wsattr(bool)
 
     @classmethod
     def from_data_model(cls, data_model, children=False):
@@ -102,7 +109,6 @@ class PoolResponse(BasePoolType):
             member_model = types.IdOnlyType
             if data_model.health_monitor:
                 pool.healthmonitor_id = data_model.health_monitor.id
-
         pool.listeners = [
             types.IdOnlyType.from_data_model(i) for i in data_model.listeners]
         pool.members = [
@@ -147,6 +153,11 @@ class PoolPOST(BasePoolType):
     healthmonitor = wtypes.wsattr(health_monitor.HealthMonitorSingleCreate)
     members = wtypes.wsattr([member.MemberSingleCreate])
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType(max_length=255)))
+    tls_container_ref = wtypes.wsattr(
+        wtypes.StringType(max_length=255))
+    ca_tls_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    crl_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    tls_enabled = wtypes.wsattr(bool, default=False)
 
 
 class PoolRootPOST(types.BaseType):
@@ -162,6 +173,10 @@ class PoolPUT(BasePoolType):
         wtypes.Enum(str, *constants.SUPPORTED_LB_ALGORITHMS))
     session_persistence = wtypes.wsattr(SessionPersistencePUT)
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType(max_length=255)))
+    tls_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    ca_tls_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    crl_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    tls_enabled = wtypes.wsattr(bool)
 
 
 class PoolRootPut(types.BaseType):
@@ -180,6 +195,10 @@ class PoolSingleCreate(BasePoolType):
     healthmonitor = wtypes.wsattr(health_monitor.HealthMonitorSingleCreate)
     members = wtypes.wsattr([member.MemberSingleCreate])
     tags = wtypes.wsattr(wtypes.ArrayType(wtypes.StringType(max_length=255)))
+    tls_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    ca_tls_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    crl_container_ref = wtypes.wsattr(wtypes.StringType(max_length=255))
+    tls_enabled = wtypes.wsattr(bool, default=False)
 
 
 class PoolStatusResponse(BasePoolType):

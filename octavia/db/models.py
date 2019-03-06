@@ -33,6 +33,7 @@ from octavia.api.v2.types import load_balancer
 from octavia.api.v2.types import member
 from octavia.api.v2.types import pool
 from octavia.api.v2.types import quotas
+from octavia.common import constants
 from octavia.common import data_models
 from octavia.db import base_models
 from octavia.i18n import _
@@ -327,6 +328,10 @@ class Pool(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
         cascade='all,delete-orphan',
         primaryjoin='and_(foreign(Tags.resource_id)==Pool.id)'
     )
+    tls_certificate_id = sa.Column(sa.String(255), nullable=True)
+    ca_tls_certificate_id = sa.Column(sa.String(255), nullable=True)
+    crl_container_id = sa.Column(sa.String(255), nullable=True)
+    tls_enabled = sa.Column(sa.Boolean, default=False, nullable=False)
 
     # This property should be a unique list of any listeners that reference
     # this pool as its default_pool and any listeners referenced by enabled
@@ -463,7 +468,7 @@ class Listener(base_models.BASE, base_models.IdMixin,
         sa.String(36),
         sa.ForeignKey("load_balancer.id", name="fk_listener_load_balancer_id"),
         nullable=True)
-    tls_certificate_id = sa.Column(sa.String(36), nullable=True)
+    tls_certificate_id = sa.Column(sa.String(255), nullable=True)
     default_pool_id = sa.Column(
         sa.String(36),
         sa.ForeignKey("pool.id", name="fk_listener_pool_id"),
@@ -498,6 +503,13 @@ class Listener(base_models.BASE, base_models.IdMixin,
     timeout_member_connect = sa.Column(sa.Integer, nullable=True)
     timeout_member_data = sa.Column(sa.Integer, nullable=True)
     timeout_tcp_inspect = sa.Column(sa.Integer, nullable=True)
+    client_ca_tls_certificate_id = sa.Column(sa.String(255), nullable=True)
+    client_authentication = sa.Column(
+        sa.String(10),
+        sa.ForeignKey("client_authentication_mode.name",
+                      name="fk_listener_client_authentication_mode_name"),
+        nullable=False, default=constants.CLIENT_AUTH_NONE)
+    client_crl_container_id = sa.Column(sa.String(255), nullable=True)
 
     _tags = orm.relationship(
         'Tags',
@@ -536,7 +548,6 @@ class SNI(base_models.BASE):
     __table_args__ = (
         sa.PrimaryKeyConstraint('listener_id', 'tls_container_id'),
     )
-
     listener_id = sa.Column(
         sa.String(36),
         sa.ForeignKey("listener.id", name="fk_sni_listener_id"),
@@ -678,6 +689,7 @@ class L7Policy(base_models.BASE, base_models.IdMixin, base_models.ProjectMixin,
     redirect_prefix = sa.Column(
         sa.String(255),
         nullable=True)
+    redirect_http_code = sa.Column(sa.Integer, nullable=True)
     position = sa.Column(sa.Integer, nullable=False)
     enabled = sa.Column(sa.Boolean(), nullable=False)
     listener = orm.relationship("Listener", uselist=False,
@@ -761,3 +773,10 @@ class Flavor(base_models.BASE,
         sa.ForeignKey("flavor_profile.id",
                       name="fk_flavor_flavor_profile_id"),
         nullable=False)
+
+
+class ClientAuthenticationMode(base_models.BASE):
+
+    __tablename__ = "client_authentication_mode"
+
+    name = sa.Column(sa.String(10), primary_key=True, nullable=False)

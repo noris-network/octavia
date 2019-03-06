@@ -46,7 +46,9 @@ Response Parameters
 .. rest_parameters:: ../parameters.yaml
 
    - admin_state_up: admin_state_up
+   - ca_tls_container_ref: ca_tls_container_ref
    - created_at: created_at
+   - crl_container_ref: crl_container_ref
    - description: description
    - healthmonitor_id: healthmonitor-id
    - id: pool-id
@@ -61,6 +63,8 @@ Response Parameters
    - provisioning_status: provisioning_status
    - session_persistence: session_persistence
    - tags: tags
+   - tls_container_ref: tls_container_ref
+   - tls_enabled: tls_enabled
    - updated_at: updated_at
 
 Response Example
@@ -160,6 +164,8 @@ Request
 .. rest_parameters:: ../parameters.yaml
 
    - admin_state_up: admin_state_up-default-optional
+   - ca_tls_container_ref: ca_tls_container_ref-optional
+   - crl_container_ref: crl_container_ref-optional
    - description: description-optional
    - lb_algorithm: lb-algorithm
    - listener_id: listener-id-pool-optional
@@ -169,6 +175,8 @@ Request
    - protocol: protocol-pools
    - session_persistence: session_persistence-optional
    - tags: tags-optional
+   - tls_enabled: tls_enabled-optional
+   - tls_container_ref: tls_container_ref-optional
 
 .. _session_persistence:
 
@@ -231,7 +239,9 @@ Response Parameters
 .. rest_parameters:: ../parameters.yaml
 
    - admin_state_up: admin_state_up
+   - ca_tls_container_ref: ca_tls_container_ref
    - created_at: created_at
+   - crl_container_ref: crl_container_ref
    - description: description
    - healthmonitor_id: healthmonitor-id
    - id: pool-id
@@ -246,6 +256,8 @@ Response Parameters
    - provisioning_status: provisioning_status
    - session_persistence: session_persistence
    - tags: tags
+   - tls_enabled: tls_enabled
+   - tls_container_ref: tls_container_ref
    - updated_at: updated_at
 
 Response Example
@@ -298,7 +310,9 @@ Response Parameters
 .. rest_parameters:: ../parameters.yaml
 
    - admin_state_up: admin_state_up
+   - ca_tls_container_ref: ca_tls_container_ref
    - created_at: created_at
+   - crl_container_ref: crl_container_ref
    - description: description
    - healthmonitor_id: healthmonitor-id
    - id: pool-id
@@ -313,6 +327,8 @@ Response Parameters
    - provisioning_status: provisioning_status
    - session_persistence: session_persistence
    - tags: tags
+   - tls_enabled: tls_enabled
+   - tls_container_ref: tls_container_ref
    - updated_at: updated_at
 
 Response Example
@@ -355,12 +371,16 @@ Request
 .. rest_parameters:: ../parameters.yaml
 
    - admin_state_up: admin_state_up-default-optional
+   - ca_tls_container_ref: ca_tls_container_ref-optional
+   - crl_container_ref: crl_container_ref-optional
    - description: description-optional
    - lb_algorithm: lb-algorithm-optional
    - name: name-optional
    - pool_id: path-pool-id
    - session_persistence: session_persistence-optional
    - tags: tags-optional
+   - tls_enabled: tls_enabled-optional
+   - tls_container_ref: tls_container_ref-optional
 
 Request Example
 ---------------
@@ -380,7 +400,9 @@ Response Parameters
 .. rest_parameters:: ../parameters.yaml
 
    - admin_state_up: admin_state_up
+   - ca_tls_container_ref: ca_tls_container_ref
    - created_at: created_at
+   - crl_container_ref: crl_container_ref
    - description: description
    - healthmonitor_id: healthmonitor-id
    - id: pool-id
@@ -395,6 +417,8 @@ Response Parameters
    - provisioning_status: provisioning_status
    - session_persistence: session_persistence
    - tags: tags
+   - tls_enabled: tls_enabled
+   - tls_container_ref: tls_container_ref
    - updated_at: updated_at
 
 Response Example

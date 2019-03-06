@@ -133,7 +133,10 @@ class Listener(BaseDataModel):
                  protocol_port=Unset, sni_container_refs=Unset,
                  sni_container_data=Unset, timeout_client_data=Unset,
                  timeout_member_connect=Unset, timeout_member_data=Unset,
-                 timeout_tcp_inspect=Unset):
+                 timeout_tcp_inspect=Unset, client_ca_tls_container_ref=Unset,
+                 client_ca_tls_container_data=Unset,
+                 client_authentication=Unset, client_crl_container_ref=Unset,
+                 client_crl_container_data=Unset):
 
         self.admin_state_up = admin_state_up
         self.connection_limit = connection_limit
@@ -155,6 +158,11 @@ class Listener(BaseDataModel):
         self.timeout_member_connect = timeout_member_connect
         self.timeout_member_data = timeout_member_data
         self.timeout_tcp_inspect = timeout_tcp_inspect
+        self.client_ca_tls_container_ref = client_ca_tls_container_ref
+        self.client_ca_tls_container_data = client_ca_tls_container_data
+        self.client_authentication = client_authentication
+        self.client_crl_container_ref = client_crl_container_ref
+        self.client_crl_container_data = client_crl_container_data
 
 
 class Pool(BaseDataModel):
@@ -162,7 +170,10 @@ class Pool(BaseDataModel):
                  healthmonitor=Unset, lb_algorithm=Unset,
                  loadbalancer_id=Unset, members=Unset, name=Unset,
                  pool_id=Unset, listener_id=Unset, protocol=Unset,
-                 session_persistence=Unset):
+                 session_persistence=Unset, tls_container_ref=Unset,
+                 tls_container_data=Unset, ca_tls_container_ref=Unset,
+                 ca_tls_container_data=Unset, crl_container_ref=Unset,
+                 crl_container_data=Unset, tls_enabled=Unset):
 
         self.admin_state_up = admin_state_up
         self.description = description
@@ -175,6 +186,13 @@ class Pool(BaseDataModel):
         self.listener_id = listener_id
         self.protocol = protocol
         self.session_persistence = session_persistence
+        self.tls_container_ref = tls_container_ref
+        self.tls_container_data = tls_container_data
+        self.ca_tls_container_ref = ca_tls_container_ref
+        self.ca_tls_container_data = ca_tls_container_data
+        self.crl_container_ref = crl_container_ref
+        self.crl_container_data = crl_container_data
+        self.tls_enabled = tls_enabled
 
 
 class Member(BaseDataModel):
@@ -220,7 +238,7 @@ class L7Policy(BaseDataModel):
     def __init__(self, action=Unset, admin_state_up=Unset, description=Unset,
                  l7policy_id=Unset, listener_id=Unset, name=Unset,
                  position=Unset, redirect_pool_id=Unset, redirect_url=Unset,
-                 rules=Unset, redirect_prefix=Unset):
+                 rules=Unset, redirect_prefix=Unset, redirect_http_code=Unset):
 
         self.action = action
         self.admin_state_up = admin_state_up
@@ -233,6 +251,7 @@ class L7Policy(BaseDataModel):
         self.redirect_url = redirect_url
         self.rules = rules
         self.redirect_prefix = redirect_prefix
+        self.redirect_http_code = redirect_http_code
 
 
 class L7Rule(BaseDataModel):

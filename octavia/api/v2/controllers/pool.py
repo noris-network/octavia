@@ -104,6 +104,23 @@ class PoolsController(base.BaseController):
         Update database for load balancer and (optional) listener based on
         provisioning status.
         """
+        # Make sure we have a client CA if they specify a CRL
+        if (pool_dict.get('crl_container_id') and
+                not pool_dict.get('ca_tls_certificate_id')):
+            raise exceptions.ValidationException(detail=_(
+                "A CA certificate reference is required to "
+                "specify a revocation list."))
+
+        tls_certificate_id = pool_dict.get('tls_certificate_id', None)
+        tls_refs = [tls_certificate_id] if tls_certificate_id else []
+        self._validate_tls_refs(tls_refs)
+
+        # Validate the client CA cert and optional client CRL
+        if pool_dict.get('ca_tls_certificate_id'):
+            self._validate_client_ca_and_crl_refs(
+                pool_dict.get('ca_tls_certificate_id'),
+                pool_dict.get('crl_container_id', None))
+
         try:
             return self.repositories.create_pool_on_load_balancer(
                 lock_session, pool_dict,
@@ -296,23 +313,8 @@ class PoolsController(base.BaseController):
         db_pool.members = new_members
         return db_pool
 
-    @wsme_pecan.wsexpose(pool_types.PoolRootResponse, wtypes.text,
-                         body=pool_types.PoolRootPut, status_code=200)
-    def put(self, id, pool_):
-        """Updates a pool on a load balancer."""
-        pool = pool_.pool
-        context = pecan.request.context.get('octavia_context')
-        db_pool = self._get_db_pool(context.session, id, show_deleted=False)
+    def _validate_pool_PUT(self, pool, db_pool):
 
-        project_id, provider = self._get_lb_project_id_provider(
-            context.session, db_pool.load_balancer_id)
-
-        if (pool.session_persistence and
-                not pool.session_persistence.type and
-                db_pool.session_persistence and
-                db_pool.session_persistence.type):
-            pool.session_persistence.type = db_pool.session_persistence.type
-        self._auth_validate_action(context, project_id, constants.RBAC_PUT)
         if db_pool.protocol == constants.PROTOCOL_UDP:
             self._validate_pool_request_for_udp(pool)
         else:
@@ -326,6 +328,62 @@ class PoolsController(base.BaseController):
         if pool.session_persistence:
             sp_dict = pool.session_persistence.to_dict(render_unsets=False)
             validate.check_session_persistence(sp_dict)
+
+        crl_ref = None
+        if (pool.crl_container_ref and
+                pool.crl_container_ref != wtypes.Unset):
+            crl_ref = pool.crl_container_ref
+        elif db_pool.crl_container_id:
+            crl_ref = db_pool.crl_container_id
+
+        ca_ref = None
+        db_ca_ref = db_pool.ca_tls_certificate_id
+        if pool.ca_tls_container_ref != wtypes.Unset:
+            if not pool.ca_tls_container_ref and db_ca_ref and crl_ref:
+                raise exceptions.ValidationException(detail=_(
+                    "A CA reference cannot be removed when a "
+                    "certificate revocation list is present."))
+
+            if not pool.ca_tls_container_ref and not db_ca_ref and crl_ref:
+                raise exceptions.ValidationException(detail=_(
+                    "A CA reference is required to "
+                    "specify a certificate revocation list."))
+            if pool.ca_tls_container_ref:
+                ca_ref = pool.ca_tls_container_ref
+            elif db_ca_ref:
+                ca_ref = db_ca_ref
+        elif crl_ref and not db_ca_ref:
+            raise exceptions.ValidationException(detail=_(
+                "A CA reference is required to "
+                "specify a certificate revocation list."))
+
+        if pool.tls_container_ref:
+            self._validate_tls_refs([pool.tls_container_ref])
+
+        # Validate the client CA cert and optional client CRL
+        if ca_ref:
+            self._validate_client_ca_and_crl_refs(ca_ref, crl_ref)
+
+    @wsme_pecan.wsexpose(pool_types.PoolRootResponse, wtypes.text,
+                         body=pool_types.PoolRootPut, status_code=200)
+    def put(self, id, pool_):
+        """Updates a pool on a load balancer."""
+        pool = pool_.pool
+        context = pecan.request.context.get('octavia_context')
+        db_pool = self._get_db_pool(context.session, id, show_deleted=False)
+
+        project_id, provider = self._get_lb_project_id_provider(
+            context.session, db_pool.load_balancer_id)
+
+        self._auth_validate_action(context, project_id, constants.RBAC_PUT)
+
+        if (pool.session_persistence and
+                not pool.session_persistence.type and
+                db_pool.session_persistence and
+                db_pool.session_persistence.type):
+            pool.session_persistence.type = db_pool.session_persistence.type
+
+        self._validate_pool_PUT(pool, db_pool)
 
         # Load the driver early as it also provides validation
         driver = driver_factory.get_driver(provider)

@@ -23,22 +23,27 @@ from octavia.tests.unit.common.sample_configs import sample_certs
 CONF = cfg.CONF
 
 
-def sample_amphora_tuple():
+def sample_amphora_tuple(id='sample_amphora_id_1', lb_network_ip='10.0.1.1',
+                         vrrp_ip='10.1.1.1', ha_ip='192.168.10.1',
+                         vrrp_port_id='1234', ha_port_id='1234', role=None,
+                         status='ACTIVE', vrrp_interface=None,
+                         vrrp_priority=None):
     in_amphora = collections.namedtuple(
         'amphora', 'id, lb_network_ip, vrrp_ip, ha_ip, vrrp_port_id, '
                    'ha_port_id, role, status, vrrp_interface,'
                    'vrrp_priority')
     return in_amphora(
-        id='sample_amphora_id_1',
-        lb_network_ip='10.0.1.1',
-        vrrp_ip='10.1.1.1',
-        ha_ip='192.168.10.1',
-        vrrp_port_id='1234',
-        ha_port_id='1234',
-        role=None,
-        status='ACTIVE',
-        vrrp_interface=None,
-        vrrp_priority=None)
+        id=id,
+        lb_network_ip=lb_network_ip,
+        vrrp_ip=vrrp_ip,
+        ha_ip=ha_ip,
+        vrrp_port_id=vrrp_port_id,
+        ha_port_id=ha_port_id,
+        role=role,
+        status=status,
+        vrrp_interface=vrrp_interface,
+        vrrp_priority=vrrp_priority)
+
 
 RET_PERSISTENCE = {
     'type': 'HTTP_COOKIE',
@@ -114,7 +119,10 @@ RET_POOL_1 = {
     'enabled': True,
     'operating_status': 'ACTIVE',
     'stick_size': '10k',
-    constants.HTTP_REUSE: False}
+    constants.HTTP_REUSE: False,
+    'ca_tls_path': '',
+    'crl_path': '',
+    'tls_enabled': False}
 
 RET_POOL_2 = {
     'id': 'sample_pool_id_2',
@@ -126,7 +134,11 @@ RET_POOL_2 = {
     'enabled': True,
     'operating_status': 'ACTIVE',
     'stick_size': '10k',
-    constants.HTTP_REUSE: False}
+    constants.HTTP_REUSE: False,
+    'ca_tls_path': '',
+    'crl_path': '',
+    'tls_enabled': False}
+
 
 RET_DEF_TLS_CONT = {'id': 'cont_id_1', 'allencompassingpem': 'imapem',
                     'primary_cn': 'FakeCn'}
@@ -196,7 +208,8 @@ RET_L7POLICY_1 = {
     'redirect_url': None,
     'redirect_prefix': None,
     'enabled': True,
-    'l7rules': [RET_L7RULE_1]}
+    'l7rules': [RET_L7RULE_1],
+    'redirect_http_code': None}
 
 RET_L7POLICY_2 = {
     'id': 'sample_l7policy_id_2',
@@ -205,7 +218,8 @@ RET_L7POLICY_2 = {
     'redirect_url': 'http://www.example.com',
     'redirect_prefix': None,
     'enabled': True,
-    'l7rules': [RET_L7RULE_2, RET_L7RULE_3]}
+    'l7rules': [RET_L7RULE_2, RET_L7RULE_3],
+    'redirect_http_code': 302}
 
 RET_L7POLICY_3 = {
     'id': 'sample_l7policy_id_3',
@@ -214,7 +228,8 @@ RET_L7POLICY_3 = {
     'redirect_url': None,
     'redirect_prefix': None,
     'enabled': True,
-    'l7rules': [RET_L7RULE_4, RET_L7RULE_5]}
+    'l7rules': [RET_L7RULE_4, RET_L7RULE_5],
+    'redirect_http_code': None}
 
 RET_L7POLICY_4 = {
     'id': 'sample_l7policy_id_4',
@@ -223,7 +238,8 @@ RET_L7POLICY_4 = {
     'redirect_url': None,
     'redirect_prefix': None,
     'enabled': True,
-    'l7rules': []}
+    'l7rules': [],
+    'redirect_http_code': None}
 
 RET_L7POLICY_5 = {
     'id': 'sample_l7policy_id_5',
@@ -232,7 +248,8 @@ RET_L7POLICY_5 = {
     'redirect_url': None,
     'redirect_prefix': None,
     'enabled': False,
-    'l7rules': [RET_L7RULE_5]}
+    'l7rules': [RET_L7RULE_5],
+    'redirect_http_code': None}
 
 RET_L7POLICY_6 = {
     'id': 'sample_l7policy_id_6',
@@ -241,7 +258,8 @@ RET_L7POLICY_6 = {
     'redirect_url': None,
     'redirect_prefix': None,
     'enabled': True,
-    'l7rules': []}
+    'l7rules': [],
+    'redirect_http_code': None}
 
 RET_L7POLICY_7 = {
     'id': 'sample_l7policy_id_7',
@@ -250,7 +268,18 @@ RET_L7POLICY_7 = {
     'redirect_url': None,
     'redirect_prefix': 'https://example.com',
     'enabled': True,
-    'l7rules': [RET_L7RULE_2, RET_L7RULE_3]}
+    'l7rules': [RET_L7RULE_2, RET_L7RULE_3],
+    'redirect_http_code': 302}
+
+RET_L7POLICY_8 = {
+    'id': 'sample_l7policy_id_8',
+    'action': constants.L7POLICY_ACTION_REDIRECT_TO_URL,
+    'redirect_pool': None,
+    'redirect_url': 'http://www.example.com',
+    'redirect_prefix': None,
+    'enabled': True,
+    'l7rules': [RET_L7RULE_2, RET_L7RULE_3],
+    'redirect_http_code': None}
 
 RET_LISTENER = {
     'id': 'sample_listener_id_1',
@@ -464,7 +493,11 @@ def sample_loadbalancer_tuple(proto=None, monitor=True, persistence=True,
 def sample_listener_loadbalancer_tuple(proto=None, topology=None,
                                        enabled=True):
     proto = 'HTTP' if proto is None else proto
-    topology = 'SINGLE' if topology is None else topology
+    if topology and topology in ['ACTIVE_STANDBY', 'ACTIVE_ACTIVE']:
+        more_amp = True
+    else:
+        more_amp = False
+        topology = constants.TOPOLOGY_SINGLE
     in_lb = collections.namedtuple(
         'load_balancer', 'id, name, protocol, vip, amphorae, topology, '
         'enabled')
@@ -473,7 +506,13 @@ def sample_listener_loadbalancer_tuple(proto=None, topology=None,
         name='test-lb',
         protocol=proto,
         vip=sample_vip_tuple(),
-        amphorae=[sample_amphora_tuple()],
+        amphorae=[sample_amphora_tuple(role=constants.ROLE_MASTER),
+                  sample_amphora_tuple(
+                      id='sample_amphora_id_2',
+                      lb_network_ip='10.0.1.2',
+                      vrrp_ip='10.1.1.2',
+                      role=constants.ROLE_BACKUP)]
+        if more_amp else [sample_amphora_tuple()],
         topology=topology,
         enabled=enabled
     )
@@ -511,7 +550,11 @@ def sample_listener_tuple(proto=None, monitor=True, alloc_default_pool=True,
                           timeout_client_data=50000,
                           timeout_member_connect=5000,
                           timeout_member_data=50000,
-                          timeout_tcp_inspect=0):
+                          timeout_tcp_inspect=0,
+                          client_ca_cert=False, client_crl_cert=False,
+                          ssl_type_l7=False, pool_cert=False,
+                          pool_ca_cert=False, pool_crl=False,
+                          tls_enabled=False):
     proto = 'HTTP' if proto is None else proto
     if be_proto is None:
         be_proto = 'HTTP' if proto is 'TERMINATED_HTTPS' else proto
@@ -526,19 +569,25 @@ def sample_listener_tuple(proto=None, monitor=True, alloc_default_pool=True,
                     'sni_containers, load_balancer, peer_port, pools, '
                     'l7policies, enabled, insert_headers, timeout_client_data,'
                     'timeout_member_connect, timeout_member_data, '
-                    'timeout_tcp_inspect',)
+                    'timeout_tcp_inspect, client_ca_tls_certificate_id, '
+                    'client_ca_tls_certificate, client_authentication, '
+                    'client_crl_container_id')
     if l7:
         pools = [
             sample_pool_tuple(
                 proto=be_proto, monitor=monitor, persistence=persistence,
                 persistence_type=persistence_type,
                 persistence_cookie=persistence_cookie,
-                monitor_ip_port=monitor_ip_port, monitor_proto=monitor_proto),
+                monitor_ip_port=monitor_ip_port, monitor_proto=monitor_proto,
+                pool_cert=pool_cert, pool_ca_cert=pool_ca_cert,
+                pool_crl=pool_crl, tls_enabled=tls_enabled),
             sample_pool_tuple(
                 proto=be_proto, monitor=monitor, persistence=persistence,
                 persistence_type=persistence_type,
                 persistence_cookie=persistence_cookie, sample_pool=2,
-                monitor_ip_port=monitor_ip_port, monitor_proto=monitor_proto)]
+                monitor_ip_port=monitor_ip_port, monitor_proto=monitor_proto,
+                pool_cert=pool_cert, pool_ca_cert=pool_ca_cert,
+                pool_crl=pool_crl, tls_enabled=tls_enabled)]
         l7policies = [
             sample_l7policy_tuple('sample_l7policy_id_1', sample_policy=1),
             sample_l7policy_tuple('sample_l7policy_id_2', sample_policy=2),
@@ -547,6 +596,9 @@ def sample_listener_tuple(proto=None, monitor=True, alloc_default_pool=True,
             sample_l7policy_tuple('sample_l7policy_id_5', sample_policy=5),
             sample_l7policy_tuple('sample_l7policy_id_6', sample_policy=6),
             sample_l7policy_tuple('sample_l7policy_id_7', sample_policy=7)]
+        if ssl_type_l7:
+            l7policies.append(sample_l7policy_tuple(
+                'sample_l7policy_id_8', sample_policy=8))
     else:
         pools = [
             sample_pool_tuple(
@@ -554,7 +606,9 @@ def sample_listener_tuple(proto=None, monitor=True, alloc_default_pool=True,
                 persistence_type=persistence_type,
                 persistence_cookie=persistence_cookie,
                 monitor_ip_port=monitor_ip_port, monitor_proto=monitor_proto,
-                backup_member=backup_member, disabled_member=disabled_member)]
+                backup_member=backup_member, disabled_member=disabled_member,
+                pool_cert=pool_cert, pool_ca_cert=pool_ca_cert,
+                pool_crl=pool_crl, tls_enabled=tls_enabled)]
         l7policies = []
     return in_listener(
         id='sample_listener_id_1',
@@ -571,7 +625,12 @@ def sample_listener_tuple(proto=None, monitor=True, alloc_default_pool=True,
             persistence_timeout=persistence_timeout,
             persistence_granularity=persistence_granularity,
             monitor_ip_port=monitor_ip_port,
-            monitor_proto=monitor_proto) if alloc_default_pool else '',
+            monitor_proto=monitor_proto,
+            pool_cert=pool_cert,
+            pool_ca_cert=pool_ca_cert,
+            pool_crl=pool_crl,
+            tls_enabled=tls_enabled
+        ) if alloc_default_pool else '',
         connection_limit=connection_limit,
         tls_certificate_id='cont_id_1' if tls else '',
         sni_container_ids=['cont_id_2', 'cont_id_3'] if sni else [],
@@ -604,7 +663,16 @@ def sample_listener_tuple(proto=None, monitor=True, alloc_default_pool=True,
         timeout_client_data=timeout_client_data,
         timeout_member_connect=timeout_member_connect,
         timeout_member_data=timeout_member_data,
-        timeout_tcp_inspect=timeout_tcp_inspect
+        timeout_tcp_inspect=timeout_tcp_inspect,
+        client_ca_tls_certificate_id='cont_id_ca' if client_ca_cert else '',
+        client_ca_tls_certificate=sample_tls_container_tuple(
+            id='cont_id_ca', certificate=sample_certs.X509_CA_CERT,
+            primary_cn=sample_certs.X509_CA_CERT_CN
+        ) if client_ca_cert else '',
+        client_authentication=(
+            constants.CLIENT_AUTH_MANDATORY if client_ca_cert else
+            constants.CLIENT_AUTH_NONE),
+        client_crl_container_id='cont_id_crl' if client_crl_cert else '',
     )
 
 
@@ -635,13 +703,16 @@ def sample_pool_tuple(proto=None, monitor=True, persistence=True,
                       persistence_timeout=None, persistence_granularity=None,
                       sample_pool=1, monitor_ip_port=False,
                       monitor_proto=None, backup_member=False,
-                      disabled_member=False, has_http_reuse=True):
+                      disabled_member=False, has_http_reuse=True,
+                      pool_cert=False, pool_ca_cert=False, pool_crl=False,
+                      tls_enabled=False):
     proto = 'HTTP' if proto is None else proto
     monitor_proto = proto if monitor_proto is None else monitor_proto
     in_pool = collections.namedtuple(
         'pool', 'id, protocol, lb_algorithm, members, health_monitor, '
-                'session_persistence, enabled, operating_status, ' +
-                constants.HTTP_REUSE)
+                'session_persistence, enabled, operating_status, '
+                'tls_certificate_id, ca_tls_certificate_id, '
+                'crl_container_id, tls_enabled, ' + constants.HTTP_REUSE)
     if (proto == constants.PROTOCOL_UDP and
             persistence_type == constants.SESSION_PERSISTENCE_SOURCE_IP):
         kwargs = {'persistence_type': persistence_type,
@@ -668,6 +739,7 @@ def sample_pool_tuple(proto=None, monitor=True, persistence=True,
                                        monitor_ip_port=monitor_ip_port)]
         if monitor is True:
             mon = sample_health_monitor_tuple(proto=monitor_proto, sample_hm=2)
+
     return in_pool(
         id=id,
         protocol=proto,
@@ -676,7 +748,11 @@ def sample_pool_tuple(proto=None, monitor=True, persistence=True,
         health_monitor=mon,
         session_persistence=persis if persistence is True else None,
         enabled=True,
-        operating_status='ACTIVE', has_http_reuse=has_http_reuse)
+        operating_status='ACTIVE', has_http_reuse=has_http_reuse,
+        tls_certificate_id='pool_cont_1' if pool_cert else None,
+        ca_tls_certificate_id='pool_ca_1' if pool_ca_cert else None,
+        crl_container_id='pool_crl' if pool_crl else None,
+        tls_enabled=tls_enabled)
 
 
 def sample_member_tuple(id, ip, enabled=True, operating_status='ACTIVE',
@@ -754,11 +830,13 @@ def sample_l7policy_tuple(id,
                           action=constants.L7POLICY_ACTION_REJECT,
                           redirect_pool=None, redirect_url=None,
                           redirect_prefix=None,
-                          enabled=True, sample_policy=1):
+                          enabled=True, redirect_http_code=302,
+                          sample_policy=1):
     in_l7policy = collections.namedtuple('l7policy',
                                          'id, action, redirect_pool, '
                                          'redirect_url, redirect_prefix, '
-                                         'l7rules, enabled')
+                                         'l7rules, enabled,'
+                                         'redirect_http_code')
     l7rules = []
     if sample_policy == 1:
         action = constants.L7POLICY_ACTION_REDIRECT_TO_POOL
@@ -787,6 +865,14 @@ def sample_l7policy_tuple(id,
         redirect_prefix = 'https://example.com'
         l7rules = [sample_l7rule_tuple('sample_l7rule_id_2', sample_rule=2),
                    sample_l7rule_tuple('sample_l7rule_id_3', sample_rule=3)]
+    elif sample_policy == 8:
+        action = constants.L7POLICY_ACTION_REDIRECT_TO_URL
+        redirect_url = 'http://www.ssl-type-l7rule-test.com'
+        l7rules = [sample_l7rule_tuple('sample_l7rule_id_7', sample_rule=7),
+                   sample_l7rule_tuple('sample_l7rule_id_8', sample_rule=8),
+                   sample_l7rule_tuple('sample_l7rule_id_9', sample_rule=9),
+                   sample_l7rule_tuple('sample_l7rule_id_10', sample_rule=10),
+                   sample_l7rule_tuple('sample_l7rule_id_11', sample_rule=11)]
     return in_l7policy(
         id=id,
         action=action,
@@ -794,7 +880,11 @@ def sample_l7policy_tuple(id,
         redirect_url=redirect_url,
         redirect_prefix=redirect_prefix,
         l7rules=l7rules,
-        enabled=enabled)
+        enabled=enabled,
+        redirect_http_code=redirect_http_code
+        if (action in [constants.L7POLICY_ACTION_REDIRECT_TO_URL,
+                       constants.L7POLICY_ACTION_REDIRECT_PREFIX] and
+            redirect_http_code) else None)
 
 
 def sample_l7rule_tuple(id,
@@ -843,6 +933,34 @@ def sample_l7rule_tuple(id,
         value = '.example.com'
         invert = False
         enabled = False
+    if sample_rule == 7:
+        type = constants.L7RULE_TYPE_SSL_CONN_HAS_CERT
+        compare_type = constants.L7RULE_COMPARE_TYPE_EQUAL_TO
+        key = None
+        value = 'tRuE'
+        invert = False
+        enabled = True
+    if sample_rule == 8:
+        type = constants.L7RULE_TYPE_SSL_VERIFY_RESULT
+        compare_type = constants.L7RULE_COMPARE_TYPE_EQUAL_TO
+        key = None
+        value = '1'
+        invert = True
+        enabled = True
+    if sample_rule == 9:
+        type = constants.L7RULE_TYPE_SSL_DN_FIELD
+        compare_type = constants.L7RULE_COMPARE_TYPE_REGEX
+        key = 'STREET'
+        value = '^STREET.*NO\.$'
+        invert = True
+        enabled = True
+    if sample_rule == 10:
+        type = constants.L7RULE_TYPE_SSL_DN_FIELD
+        compare_type = constants.L7RULE_COMPARE_TYPE_STARTS_WITH
+        key = 'OU-3'
+        value = 'Orgnization Bala'
+        invert = True
+        enabled = True
     return in_l7rule(
         id=id,
         type=type,
