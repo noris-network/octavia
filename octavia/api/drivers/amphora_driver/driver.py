@@ -14,15 +14,17 @@
 
 from jsonschema import exceptions as js_exceptions
 from jsonschema import validate
+
 from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging as messaging
 from stevedore import driver as stevedore_driver
 
+from octavia_lib.api.drivers import data_models as driver_dm
+from octavia_lib.api.drivers import exceptions
+from octavia_lib.api.drivers import provider_base as driver_base
+
 from octavia.api.drivers.amphora_driver import flavor_schema
-from octavia.api.drivers import data_models as driver_dm
-from octavia.api.drivers import exceptions
-from octavia.api.drivers import provider_base as driver_base
 from octavia.api.drivers import utils as driver_utils
 from octavia.common import constants as consts
 from octavia.common import data_models
@@ -93,7 +95,7 @@ class AmphoraProviderDriver(driver_base.ProviderDriver):
         # expects
         vip_qos_policy_id = lb_dict.pop('vip_qos_policy_id', None)
         if vip_qos_policy_id:
-            vip_dict = {"qos_policy_id": vip_qos_policy_id}
+            vip_dict = {"vip_qos_policy_id": vip_qos_policy_id}
             lb_dict["vip"] = vip_dict
 
         payload = {consts.LOAD_BALANCER_ID: lb_id,
@@ -115,6 +117,14 @@ class AmphoraProviderDriver(driver_base.ProviderDriver):
         if 'admin_state_up' in listener_dict:
             listener_dict['enabled'] = listener_dict.pop('admin_state_up')
         listener_id = listener_dict.pop('listener_id')
+        if 'client_ca_tls_container_ref' in listener_dict:
+            listener_dict['client_ca_tls_container_id'] = listener_dict.pop(
+                'client_ca_tls_container_ref')
+        listener_dict.pop('client_ca_tls_container_data', None)
+        if 'client_crl_container_ref' in listener_dict:
+            listener_dict['client_crl_container_id'] = listener_dict.pop(
+                'client_crl_container_ref')
+        listener_dict.pop('client_crl_container_data', None)
 
         payload = {consts.LISTENER_ID: listener_id,
                    consts.LISTENER_UPDATES: listener_dict}

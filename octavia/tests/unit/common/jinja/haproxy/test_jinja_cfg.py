@@ -54,7 +54,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -101,7 +101,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -134,7 +134,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -160,7 +160,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -197,7 +197,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -233,7 +233,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -261,7 +261,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -297,7 +297,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -446,6 +446,34 @@ class TestHaproxyCfg(base.TestCase):
         self.assertEqual(sample_configs.sample_base_expected_config(
             frontend=fe, backend=be), rendered_obj)
 
+    def test_render_template_health_monitor_http_check(self):
+        be = ("backend sample_pool_id_1\n"
+              "    mode http\n"
+              "    balance roundrobin\n"
+              "    cookie SRV insert indirect nocache\n"
+              "    timeout check 31s\n"
+              "    option httpchk GET /index.html HTTP/1.1\\r\\nHost:\\ "
+              "testlab.com\n"
+              "    http-check expect rstatus 418\n"
+              "    fullconn {maxconn}\n"
+              "    option allbackups\n"
+              "    timeout connect 5000\n"
+              "    timeout server 50000\n"
+              "    server sample_member_id_1 10.0.0.99:82 "
+              "weight 13 check inter 30s fall 3 rise 2 "
+              "cookie sample_member_id_1\n"
+              "    server sample_member_id_2 10.0.0.98:82 "
+              "weight 13 check inter 30s fall 3 rise 2 "
+              "cookie sample_member_id_2\n\n").format(
+            maxconn=constants.HAPROXY_MAX_MAXCONN)
+        rendered_obj = self.jinja_cfg.render_loadbalancer_obj(
+            sample_configs.sample_amphora_tuple(),
+            sample_configs.sample_listener_tuple(proto='HTTP',
+                                                 monitor_proto='HTTP',
+                                                 hm_host_http_check=True))
+        self.assertEqual(sample_configs.sample_base_expected_config(
+            backend=be), rendered_obj)
+
     def test_render_template_no_persistence_https(self):
         fe = ("frontend sample_listener_id_1\n"
               "    option tcplog\n"
@@ -497,7 +525,7 @@ class TestHaproxyCfg(base.TestCase):
               "    stick-table type ip size 10k\n"
               "    stick on src\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -524,7 +552,7 @@ class TestHaproxyCfg(base.TestCase):
               "    stick store-response res.cook(JSESSIONID)\n"
               "    stick match req.cook(JSESSIONID)\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -612,7 +640,7 @@ class TestHaproxyCfg(base.TestCase):
               "This\\ string\\\\\\ with\\ stuff\n"
               "        acl sample_l7rule_id_3 req.cook(some-cookie) -m reg "
               "this.*|that\n"
-              "    redirect location http://www.example.com if "
+              "    redirect code 302 location http://www.example.com if "
               "!sample_l7rule_id_2 sample_l7rule_id_3\n"
               "        acl sample_l7rule_id_4 path_end -m str jpg\n"
               "        acl sample_l7rule_id_5 req.hdr(host) -i -m end "
@@ -623,7 +651,7 @@ class TestHaproxyCfg(base.TestCase):
               "This\\ string\\\\\\ with\\ stuff\n"
               "        acl sample_l7rule_id_3 req.cook(some-cookie) -m reg "
               "this.*|that\n"
-              "    redirect prefix https://example.com if "
+              "    redirect code 302 prefix https://example.com if "
               "!sample_l7rule_id_2 sample_l7rule_id_3\n"
               "    default_backend sample_pool_id_1\n"
               "    timeout client 50000\n\n").format(
@@ -633,7 +661,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -649,7 +677,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /healthmon.html\n"
+              "    option httpchk GET /healthmon.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -670,7 +698,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    option forwardfor\n"
               "    fullconn {maxconn}\n"
@@ -698,7 +726,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    option forwardfor\n"
               "    http-request set-header X-Forwarded-Port %[dst_port]\n"
@@ -755,7 +783,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -790,7 +818,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn {maxconn}\n"
               "    option allbackups\n"
@@ -901,11 +929,17 @@ class TestHaproxyCfg(base.TestCase):
         ret = self.jinja_cfg._transform_l7policy(in_l7policy, {})
         self.assertEqual(sample_configs.RET_L7POLICY_1, ret)
 
-    def test_transform_l7policy_2(self):
+    def test_transform_l7policy_2_8(self):
         in_l7policy = sample_configs.sample_l7policy_tuple(
             'sample_l7policy_id_2', sample_policy=2)
         ret = self.jinja_cfg._transform_l7policy(in_l7policy, {})
         self.assertEqual(sample_configs.RET_L7POLICY_2, ret)
+
+        # test invalid action without redirect_http_code
+        in_l7policy = sample_configs.sample_l7policy_tuple(
+            'sample_l7policy_id_8', sample_policy=2, redirect_http_code=None)
+        ret = self.jinja_cfg._transform_l7policy(in_l7policy, {})
+        self.assertEqual(sample_configs.RET_L7POLICY_8, ret)
 
     def test_transform_l7policy_disabled_rule(self):
         in_l7policy = sample_configs.sample_l7policy_tuple(
@@ -1046,7 +1080,7 @@ class TestHaproxyCfg(base.TestCase):
               "This\\ string\\\\\\ with\\ stuff\n"
               "        acl sample_l7rule_id_3 req.cook(some-cookie) -m reg "
               "this.*|that\n"
-              "    redirect location http://www.example.com "
+              "    redirect code 302 location http://www.example.com "
               "if !sample_l7rule_id_2 sample_l7rule_id_3\n"
               "        acl sample_l7rule_id_4 path_end -m str jpg\n"
               "        acl sample_l7rule_id_5 req.hdr(host) -i -m end "
@@ -1057,7 +1091,7 @@ class TestHaproxyCfg(base.TestCase):
               "This\\ string\\\\\\ with\\ stuff\n"
               "        acl sample_l7rule_id_3 req.cook(some-cookie) -m reg "
               "this.*|that\n"
-              "    redirect prefix https://example.com "
+              "    redirect code 302 prefix https://example.com "
               "if !sample_l7rule_id_2 sample_l7rule_id_3\n"
               "        acl sample_l7rule_id_7 ssl_c_used\n"
               "        acl sample_l7rule_id_8 ssl_c_verify eq 1\n"
@@ -1066,7 +1100,8 @@ class TestHaproxyCfg(base.TestCase):
               "        acl sample_l7rule_id_10 ssl_c_s_dn(OU-3) -m beg "
               "Orgnization\\ Bala\n"
               "        acl sample_l7rule_id_11 path -m beg /api\n"
-              "    redirect location http://www.ssl-type-l7rule-test.com "
+              "    redirect code 302 location "
+              "http://www.ssl-type-l7rule-test.com "
               "if sample_l7rule_id_7 !sample_l7rule_id_8 !sample_l7rule_id_9 "
               "!sample_l7rule_id_10 sample_l7rule_id_11\n"
               "    default_backend sample_pool_id_1\n"
@@ -1076,7 +1111,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /index.html\n"
+              "    option httpchk GET /index.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn 1000000\n"
               "    option allbackups\n"
@@ -1091,7 +1126,7 @@ class TestHaproxyCfg(base.TestCase):
               "    balance roundrobin\n"
               "    cookie SRV insert indirect nocache\n"
               "    timeout check 31s\n"
-              "    option httpchk GET /healthmon.html\n"
+              "    option httpchk GET /healthmon.html HTTP/1.0\\r\\n\n"
               "    http-check expect rstatus 418\n"
               "    fullconn 1000000\n"
               "    option allbackups\n"

@@ -29,6 +29,15 @@ function octaviaclient_install {
     fi
 }
 
+function octavia_lib_install {
+    if use_library_from_git "octavia-lib"; then
+        git_clone_by_name "octavia-lib"
+        setup_dev_lib "octavia-lib"
+    else
+        pip_install_gr octavia-lib
+    fi
+}
+
 function install_diskimage_builder {
     if use_library_from_git "diskimage-builder"; then
         GITREPO["diskimage-builder"]=$DISKIMAGE_BUILDER_REPO_URL
@@ -209,6 +218,9 @@ function octavia_configure {
     sudo mkdir -m 755 -p $OCTAVIA_CONF_DIR
     safe_chown $STACK_USER $OCTAVIA_CONF_DIR
 
+    sudo mkdir -m 700 -p $OCTAVIA_RUN_DIR
+    safe_chown $STACK_USER $OCTAVIA_RUN_DIR
+
     if ! [ -e $OCTAVIA_CONF ] ; then
         cp $OCTAVIA_DIR/etc/octavia.conf $OCTAVIA_CONF
     fi
@@ -325,6 +337,7 @@ function octavia_configure {
     iniset $OCTAVIA_CONF certificates ca_certificate ${OCTAVIA_CERTS_DIR}/ca_01.pem
     iniset $OCTAVIA_CONF certificates ca_private_key ${OCTAVIA_CERTS_DIR}/private/cakey.pem
     iniset $OCTAVIA_CONF certificates ca_private_key_passphrase foobar
+    iniset $OCTAVIA_CONF certificates server_certs_key_passphrase insecure-key-do-not-use-this-key
 
     if [[ "$OCTAVIA_USE_LEGACY_RBAC" == "True" ]]; then
         cp $OCTAVIA_DIR/etc/policy/admin_or_owner-policy.json $OCTAVIA_CONF_DIR/policy.json
@@ -397,8 +410,8 @@ function create_mgmt_network_interface {
 
 function build_mgmt_network {
     # Create network and attach a subnet
-    OCTAVIA_AMP_NETWORK_ID=$(openstack network create lb-mgmt-net -f value -c id)
-    OCTAVIA_AMP_SUBNET_ID=$(openstack subnet create --subnet-range $OCTAVIA_MGMT_SUBNET --allocation-pool start=$OCTAVIA_MGMT_SUBNET_START,end=$OCTAVIA_MGMT_SUBNET_END --network lb-mgmt-net lb-mgmt-subnet -f value -c id)
+    openstack network create lb-mgmt-net
+    openstack subnet create --subnet-range $OCTAVIA_MGMT_SUBNET --allocation-pool start=$OCTAVIA_MGMT_SUBNET_START,end=$OCTAVIA_MGMT_SUBNET_END --network lb-mgmt-net lb-mgmt-subnet
 
     # Create security group and rules
     openstack security group create lb-mgmt-sec-grp
@@ -476,6 +489,7 @@ function octavia_start {
         run_process $OCTAVIA_API  "$OCTAVIA_API_BINARY $OCTAVIA_API_ARGS"
     fi
 
+    run_process $OCTAVIA_DRIVER_AGENT "$OCTAVIA_DRIVER_AGENT_BINARY $OCTAVIA_DRIVER_AGENT_ARGS"
     run_process $OCTAVIA_CONSUMER  "$OCTAVIA_CONSUMER_BINARY $OCTAVIA_CONSUMER_ARGS"
     run_process $OCTAVIA_HOUSEKEEPER  "$OCTAVIA_HOUSEKEEPER_BINARY $OCTAVIA_HOUSEKEEPER_ARGS"
     run_process $OCTAVIA_HEALTHMANAGER  "$OCTAVIA_HEALTHMANAGER_BINARY $OCTAVIA_HEALTHMANAGER_ARGS"
@@ -488,6 +502,7 @@ function octavia_stop {
     else
         stop_process $OCTAVIA_API
     fi
+    stop_process $OCTAVIA_DRIVER_AGENT
     stop_process $OCTAVIA_CONSUMER
     stop_process $OCTAVIA_HOUSEKEEPER
     stop_process $OCTAVIA_HEALTHMANAGER
@@ -521,6 +536,9 @@ function octavia_cleanup {
     fi
     if [ ${OCTAVIA_CONF_DIR}x != x ] ; then
          sudo rm -rf ${OCTAVIA_CONF_DIR}
+    fi
+    if [ ${OCTAVIA_RUN_DIR}x != x ] ; then
+         sudo rm -rf ${OCTAVIA_RUN_DIR}
     fi
     if [ ${OCTAVIA_AMP_SSH_KEY_PATH}x != x ] ; then
         rm -f ${OCTAVIA_AMP_SSH_KEY_PATH} ${OCTAVIA_AMP_SSH_KEY_PATH}.pub
@@ -617,6 +635,10 @@ function octavia_init {
    fi
 }
 
+function _configure_tempest {
+    iniset $TEMPEST_CONFIG service_available octavia "True"
+}
+
 # check for service enabled
 if is_service_enabled $OCTAVIA; then
     if [ $OCTAVIA_NODE == 'main' ] || [ $OCTAVIA_NODE == 'standalone' ] ; then # main-ha node stuff only
@@ -634,6 +656,7 @@ if is_service_enabled $OCTAVIA; then
     if [[ "$1" == "stack" && "$2" == "install" ]]; then
         # Perform installation of service source
         echo_summary "Installing octavia"
+        octavia_lib_install
         octavia_install
         octaviaclient_install
 
@@ -650,6 +673,11 @@ if is_service_enabled $OCTAVIA; then
 
         echo_summary "Starting Octavia"
         octavia_start
+    elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
+        if is_service_enabled tempest; then
+            # Configure Tempest for Congress
+            _configure_tempest
+        fi
     fi
 fi
 

@@ -116,16 +116,22 @@ bind {{ lb_vip_address }}:{{ listener.protocol_port }} {{
     {% for l7rule in l7policy.l7rules %}
         {{- l7rule_macro(constants, l7rule) -}}
     {% endfor %}
+    {% if l7policy.redirect_http_code %}
+        {% set redirect_http_code_opt = " code %s"|format(
+        l7policy.redirect_http_code) %}
+    {% else %}
+        {% set redirect_http_code_opt = "" %}
+    {% endif %}
     {% if l7policy.action == constants.L7POLICY_ACTION_REJECT %}
     http-request deny if{{ l7rule_list_macro(l7policy) }}
     {% elif l7policy.action == constants.L7POLICY_ACTION_REDIRECT_TO_URL %}
-    redirect location {{ l7policy.redirect_url }} if{{ l7rule_list_macro(
+    redirect {{- redirect_http_code_opt }} location {{ l7policy.redirect_url }} if{{ l7rule_list_macro(
         l7policy) }}
     {% elif l7policy.action == constants.L7POLICY_ACTION_REDIRECT_TO_POOL and l7policy.redirect_pool.enabled %}
     use_backend {{ l7policy.redirect_pool.id }} if{{ l7rule_list_macro(
         l7policy) }}
     {% elif l7policy.action == constants.L7POLICY_ACTION_REDIRECT_PREFIX %}
-    redirect prefix {{ l7policy.redirect_prefix }} if{{ l7rule_list_macro(
+    redirect {{- redirect_http_code_opt }} prefix {{ l7policy.redirect_prefix }} if{{ l7rule_list_macro(
         l7policy) }}
     {% endif %}
 {% endmacro %}
@@ -287,8 +293,18 @@ backend {{ pool.id }}
         {% if (pool.health_monitor.type ==
                constants.HEALTH_MONITOR_HTTP or pool.health_monitor.type ==
                constants.HEALTH_MONITOR_HTTPS) %}
-    option httpchk {{ pool.health_monitor.http_method }} {{
-    pool.health_monitor.url_path }}
+            {% if (pool.health_monitor.http_version and
+                   pool.health_monitor.http_version == 1.1 and
+                   pool.health_monitor.domain_name) %}
+    option httpchk {{ pool.health_monitor.http_method }} {{ pool.health_monitor.url_path }} HTTP/
+    {{- pool.health_monitor.http_version -}}{{- "\\r\\n" | safe -}}
+    Host:\ {{ pool.health_monitor.domain_name }}
+            {% elif pool.health_monitor.http_version %}
+    option httpchk {{ pool.health_monitor.http_method }} {{ pool.health_monitor.url_path }} HTTP/
+    {{- pool.health_monitor.http_version -}}{{- "\\r\\n" | safe }}
+            {% else %}
+    option httpchk {{ pool.health_monitor.http_method }} {{ pool.health_monitor.url_path }}
+            {% endif %}
     http-check expect rstatus {{ pool.health_monitor.expected_codes }}
         {% endif %}
         {% if pool.health_monitor.type == constants.HEALTH_MONITOR_TLS_HELLO %}

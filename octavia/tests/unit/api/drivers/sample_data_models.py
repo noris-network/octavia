@@ -73,13 +73,16 @@ class SampleDriverDataModels(object):
                               'delay': 1, 'timeout': 3, 'fall_threshold': 1,
                               'rise_threshold': 2, 'http_method': 'GET',
                               'url_path': '/', 'expected_codes': '200',
-                              'name': 'hm1', 'pool_id': self.pool1_id}
+                              'name': 'hm1', 'pool_id': self.pool1_id,
+                              'http_version': 1.0, 'domain_name': None}
 
         self.test_hm1_dict.update(self._common_test_dict)
 
         self.test_hm2_dict = copy.deepcopy(self.test_hm1_dict)
         self.test_hm2_dict['id'] = self.hm2_id
         self.test_hm2_dict['name'] = 'hm2'
+        self.test_hm2_dict.update({'http_version': 1.1,
+                                   'domain_name': 'testdomainname.com'})
 
         self.db_hm1 = data_models.HealthMonitor(**self.test_hm1_dict)
         self.db_hm2 = data_models.HealthMonitor(**self.test_hm2_dict)
@@ -94,11 +97,15 @@ class SampleDriverDataModels(object):
                                   'pool_id': self.pool1_id,
                                   'timeout': 3,
                                   'type': constants.HEALTH_MONITOR_PING,
-                                  'url_path': '/'}
+                                  'url_path': '/',
+                                  'http_version': 1.0,
+                                  'domain_name': None}
 
         self.provider_hm2_dict = copy.deepcopy(self.provider_hm1_dict)
         self.provider_hm2_dict['healthmonitor_id'] = self.hm2_id
         self.provider_hm2_dict['name'] = 'hm2'
+        self.provider_hm2_dict.update({'http_version': 1.1,
+                                       'domain_name': 'testdomainname.com'})
 
         self.provider_hm1 = driver_dm.HealthMonitor(**self.provider_hm1_dict)
         self.provider_hm2 = driver_dm.HealthMonitor(**self.provider_hm2_dict)
@@ -337,7 +344,8 @@ class SampleDriverDataModels(object):
                                     'position': 1,
                                     'listener': None,
                                     'redirect_pool': None,
-                                    'l7rules': self.test_l7rules}
+                                    'l7rules': self.test_l7rules,
+                                    'redirect_http_code': 302}
 
         self.test_l7policy1_dict.update(self._common_test_dict)
 
@@ -367,7 +375,8 @@ class SampleDriverDataModels(object):
             'redirect_pool_id': self.pool1_id,
             'redirect_url': '/index.html',
             'redirect_prefix': 'https://example.com/',
-            'rules': self.provider_l7rules_dicts
+            'rules': self.provider_l7rules_dicts,
+            'redirect_http_code': 302
         }
 
         self.provider_l7policy2_dict = copy.deepcopy(
