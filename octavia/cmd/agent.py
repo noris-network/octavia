@@ -1,5 +1,3 @@
-# Copyright 2015 Hewlett-Packard Development Company, L.P.
-#
 # Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
@@ -74,7 +72,7 @@ def main():
         'timeout': CONF.amphora_agent.agent_request_read_timeout,
         'certfile': CONF.amphora_agent.agent_server_cert,
         'ca_certs': CONF.amphora_agent.agent_server_ca,
-        'cert_reqs': True,
+        'cert_reqs': ssl.CERT_REQUIRED,
         'preload_app': True,
         'accesslog': '/var/log/amphora-agent.log',
         'errorlog': '/var/log/amphora-agent.log',

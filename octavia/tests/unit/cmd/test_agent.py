@@ -10,6 +10,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import ssl
 import mock
 
 from octavia.cmd import agent
@@ -35,6 +36,11 @@ class TestAmphoraAgentCMD(base.TestCase):
         mock_amp.return_value = mock_amp_instance
 
         agent.main()
+        # Ensure gunicorn is initialized with the correct cert_reqs option.
+        # This option is what enforces use of a valid client certificate.
+        self.assertEqual(
+                ssl.CERT_REQUIRED,
+                mock_amp.call_args[0][1]['cert_reqs'])
 
         mock_health_proc.start.assert_called_once_with()
         mock_amp_instance.run.assert_called_once()
