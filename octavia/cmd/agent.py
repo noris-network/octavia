@@ -14,6 +14,7 @@
 
 import multiprocessing as multiproc
 import sys
+import ssl
 
 import gunicorn.app.base
 from oslo_config import cfg
